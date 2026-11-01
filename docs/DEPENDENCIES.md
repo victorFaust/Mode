@@ -44,12 +44,25 @@ All dependencies are open source and free for internal use. Licences were taken 
 
 ## Client ([client/package.json](../client/package.json))
 
-| Package | Licence |
-| --- | --- |
-| react, react-dom 18 | MIT |
-| vite, @vitejs/plugin-react, vitest | MIT |
-| typescript | Apache 2.0 |
-| jsdom, @testing-library/react | MIT |
+| Package | Licence | Used for |
+| --- | --- | --- |
+| react, react-dom 18 | MIT | UI |
+| @microsoft/signalr | MIT | the realtime connection |
+| openapi-fetch | MIT | typed API client |
+| zustand | MIT | the store fed by the realtime service |
+| @tanstack/react-virtual | MIT | virtualized message list |
+| react-markdown, remark-gfm | MIT | renders messages as React elements (HTML disabled) |
+| @radix-ui/react-dialog, -dropdown-menu, -popover, -tooltip | MIT | accessible dialogs, menus and tooltips |
+| cmdk | MIT | Ctrl/Cmd + K command bar |
+| @emoji-mart/react, @emoji-mart/data, emoji-mart | MIT | emoji picker (loaded on first open) |
+| lucide-react | ISC | icons |
+| vite, @vitejs/plugin-react, vitest | MIT | build and tests |
+| typescript | Apache 2.0 | type checking |
+| jsdom, @testing-library/react, user-event, jest-dom | MIT | component tests |
+| @playwright/test | Apache 2.0 | end-to-end flows |
+| @axe-core/playwright | MPL 2.0 | accessibility checks in the end-to-end flows (dev only) |
+| openapi-typescript 7.13.0 with typescript 5 (run with `npx`, not installed) | MIT | generates `src/api/schema.d.ts`; it needs the TypeScript 5 compiler API, which TypeScript 7 doesn't have |
+| Swashbuckle.AspNetCore.Cli 10.3.1 (.NET local tool) | MIT | writes `client/openapi.json` |
 
 `npm audit` reported 0 vulnerabilities on 2026-11-01.
 

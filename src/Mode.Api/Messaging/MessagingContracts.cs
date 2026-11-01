@@ -8,6 +8,7 @@ public enum RoomType { Channel, Conversation }
 
 public sealed record RoomRef(RoomType Type, Guid Id)
 {
+    [System.Text.Json.Serialization.JsonIgnore]
     public string GroupName => $"{(Type == RoomType.Channel ? "channel" : "conversation")}:{Id}";
 
     public static RoomRef Of(Message message) => message.ChannelId is { } channelId

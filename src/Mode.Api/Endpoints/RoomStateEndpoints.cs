@@ -20,6 +20,10 @@ public sealed record MarkReadRequest(long? Sequence);
 
 public sealed record MuteRequest(bool? Muted);
 
+public sealed record ReadMarkerDto(long LastReadSequence);
+
+public sealed record MuteDto(bool Muted);
+
 public sealed record SetPresenceRequest(PresenceStatus? Status, string? Message);
 
 public static class RoomStateEndpoints
@@ -29,22 +33,22 @@ public static class RoomStateEndpoints
 
     public static RouteGroupBuilder MapRoomStateEndpoints(this RouteGroupBuilder api)
     {
-        api.MapGet("/me/unread", Unread).WithTags("Unread");
+        api.MapGet("/me/unread", Unread).WithTags("Unread").Produces<RoomUnreadDto[]>();
         api.MapPut("/channels/{channelId:guid}/read",
             (Guid channelId, MarkReadRequest body, [AsParameters] RoomStateDependencies deps, CancellationToken ct) =>
-                MarkRead(new RoomRef(RoomType.Channel, channelId), body, deps, ct)).WithTags("Unread");
+                MarkRead(new RoomRef(RoomType.Channel, channelId), body, deps, ct)).WithTags("Unread").Produces<ReadMarkerDto>();
         api.MapPut("/conversations/{conversationId:guid}/read",
             (Guid conversationId, MarkReadRequest body, [AsParameters] RoomStateDependencies deps, CancellationToken ct) =>
-                MarkRead(new RoomRef(RoomType.Conversation, conversationId), body, deps, ct)).WithTags("Unread");
+                MarkRead(new RoomRef(RoomType.Conversation, conversationId), body, deps, ct)).WithTags("Unread").Produces<ReadMarkerDto>();
         api.MapPut("/channels/{channelId:guid}/mute",
             (Guid channelId, MuteRequest body, [AsParameters] RoomStateDependencies deps, CancellationToken ct) =>
-                Mute(new RoomRef(RoomType.Channel, channelId), body, deps, ct)).WithTags("Unread");
+                Mute(new RoomRef(RoomType.Channel, channelId), body, deps, ct)).WithTags("Unread").Produces<MuteDto>();
         api.MapPut("/conversations/{conversationId:guid}/mute",
             (Guid conversationId, MuteRequest body, [AsParameters] RoomStateDependencies deps, CancellationToken ct) =>
-                Mute(new RoomRef(RoomType.Conversation, conversationId), body, deps, ct)).WithTags("Unread");
+                Mute(new RoomRef(RoomType.Conversation, conversationId), body, deps, ct)).WithTags("Unread").Produces<MuteDto>();
 
-        api.MapPut("/me/presence", SetPresence).WithTags("Presence");
-        api.MapGet("/users/presence", GetPresence).WithTags("Presence");
+        api.MapPut("/me/presence", SetPresence).WithTags("Presence").Produces<PresenceDto>();
+        api.MapGet("/users/presence", GetPresence).WithTags("Presence").Produces<PresenceDto[]>();
         return api;
     }
 
@@ -147,7 +151,7 @@ public static class RoomStateEndpoints
         }
 
         await notifier.ReadMarkerChangedAsync(user.Id, room, lastRead);
-        return TypedResults.Ok(new { lastReadSequence = lastRead });
+        return TypedResults.Ok(new ReadMarkerDto(lastRead));
     }
 
     /// <summary>A muted room still counts unread messages but only notifies for direct @mentions.</summary>
@@ -173,7 +177,7 @@ public static class RoomStateEndpoints
                 ON CONFLICT ("UserId", "ConversationId") WHERE "ConversationId" IS NOT NULL DO UPDATE
                 SET "IsMuted" = EXCLUDED."IsMuted", "UpdatedAt" = EXCLUDED."UpdatedAt"
                 """, ct);
-        return TypedResults.Ok(new { muted });
+        return TypedResults.Ok(new MuteDto(muted));
     }
 
     private static async Task<IResult> SetPresence(

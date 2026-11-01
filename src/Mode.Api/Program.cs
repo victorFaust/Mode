@@ -18,11 +18,15 @@ using Mode.Domain.Files;
 using Mode.Infrastructure;
 using Mode.Infrastructure.Files;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Serilog;
 using Serilog.Events;
 using Serilog.Formatting.Compact;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Set by scripts/export-openapi.ps1: the Swashbuckle CLI starts the host only to read endpoint metadata.
+var openApiExport = Environment.GetEnvironmentVariable("MODE_OPENAPI_EXPORT") == "1";
 
 builder.Host.UseSerilog((context, services, logger) =>
 {
@@ -72,12 +76,12 @@ builder.Services.AddSingleton<JobRunner>();
 builder.Services.AddScoped<IJobHandler, FileScanJob>();
 builder.Services.AddScoped<IJobHandler, FilePreviewJob>();
 builder.Services.AddScoped<IJobHandler, FilePurgeJob>();
-builder.Services.AddHostedService<JobWorker>();
+if (!openApiExport) builder.Services.AddHostedService<JobWorker>();
 
 builder.Services.AddOptions<PresenceOptions>().BindConfiguration(PresenceOptions.SectionName);
 builder.Services.AddSingleton<PresenceTracker>();
 builder.Services.AddSingleton<PresenceNotifier>();
-builder.Services.AddHostedService<PresenceSweeper>();
+if (!openApiExport) builder.Services.AddHostedService<PresenceSweeper>();
 
 builder.Services.AddOptions<PushOptions>().BindConfiguration(PushOptions.SectionName);
 builder.Services.AddOptions<EmailOptions>().BindConfiguration(EmailOptions.SectionName);
@@ -94,9 +98,22 @@ builder.Services.AddScoped<IJobHandler, EmailDigestJob>();
 builder.Services.AddSignalR()
     .AddJsonProtocol(o => o.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+// Swashbuckle reads the MVC options when describing schemas.
+builder.Services.Configure<Microsoft.AspNetCore.Mvc.JsonOptions>(o => o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddProblemDetails();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(o =>
+{
+    o.SupportNonNullableReferenceTypes();
+    o.NonNullableReferenceTypesAsRequired();
+});
+
+// The host application embeds the client from its own origin; empty means same-origin only.
+var corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.WithOrigins(corsOrigins).AllowAnyHeader().AllowAnyMethod()));
+
+// No secrets are configured for an export, so skip the checks that would refuse to start without them.
+if (openApiExport) builder.Services.RemoveAll<IStartupValidator>();
 builder.Services.AddHealthChecks().AddModeInfrastructureChecks(tags: ["ready"]);
 
 var app = builder.Build();
@@ -117,6 +134,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -125,6 +143,10 @@ app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => fa
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") }).AllowAnonymous();
 
 app.MapGroup("/api/v1")
+    .ProducesProblem(StatusCodes.Status400BadRequest)
+    .ProducesProblem(StatusCodes.Status403Forbidden)
+    .ProducesProblem(StatusCodes.Status404NotFound)
+    .ProducesProblem(StatusCodes.Status409Conflict)
     .MapUserEndpoints()
     .MapWorkspaceEndpoints()
     .MapChannelEndpoints()

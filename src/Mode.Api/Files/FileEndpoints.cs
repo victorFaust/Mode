@@ -26,22 +26,22 @@ public static class FileEndpoints
     public static RouteGroupBuilder MapFileEndpoints(this RouteGroupBuilder api)
     {
         var files = api.MapGroup("/files").WithTags("Files");
-        files.MapPost("/uploads", StartUpload);
-        files.MapPut("/uploads/{uploadId:guid}/content", UploadContent);
-        files.MapPost("/uploads/{uploadId:guid}/complete", CompleteUpload);
-        files.MapGet("/{fileId:guid}", Get);
-        files.MapGet("/{fileId:guid}/versions", Versions);
-        files.MapGet("/{fileId:guid}/link", Link);
-        files.MapDelete("/{fileId:guid}", Delete);
-        files.MapPost("/{fileId:guid}/restore", Restore);
-        files.MapGet("/content/{token}", Content).AllowAnonymous();
+        files.MapPost("/uploads", StartUpload).Produces<StartUploadResponse>(StatusCodes.Status201Created);
+        files.MapPut("/uploads/{uploadId:guid}/content", UploadContent).Produces(StatusCodes.Status204NoContent);
+        files.MapPost("/uploads/{uploadId:guid}/complete", CompleteUpload).Produces<FileDto>(StatusCodes.Status201Created);
+        files.MapGet("/{fileId:guid}", Get).Produces<FileDto>();
+        files.MapGet("/{fileId:guid}/versions", Versions).Produces<FileVersionDto[]>();
+        files.MapGet("/{fileId:guid}/link", Link).Produces<FileLinkResponse>();
+        files.MapDelete("/{fileId:guid}", Delete).Produces(StatusCodes.Status204NoContent);
+        files.MapPost("/{fileId:guid}/restore", Restore).Produces<FileDto>();
+        files.MapGet("/content/{token}", Content).AllowAnonymous().Produces(StatusCodes.Status200OK, contentType: "application/octet-stream");
 
         api.MapGet("/channels/{channelId:guid}/files",
             (Guid channelId, bool? deleted, [AsParameters] FileDependencies deps, CancellationToken ct) =>
-                List(new RoomRef(RoomType.Channel, channelId), deleted, deps, ct)).WithTags("Files");
+                List(new RoomRef(RoomType.Channel, channelId), deleted, deps, ct)).WithTags("Files").Produces<FileDto[]>();
         api.MapGet("/conversations/{conversationId:guid}/files",
             (Guid conversationId, bool? deleted, [AsParameters] FileDependencies deps, CancellationToken ct) =>
-                List(new RoomRef(RoomType.Conversation, conversationId), deleted, deps, ct)).WithTags("Files");
+                List(new RoomRef(RoomType.Conversation, conversationId), deleted, deps, ct)).WithTags("Files").Produces<FileDto[]>();
         return api;
     }
 

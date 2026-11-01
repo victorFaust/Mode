@@ -1,0 +1,25 @@
+html, body, #root { height: 100%; margin: 0; }
+body { font-family: "Segoe UI", system-ui, sans-serif; background: #eef0f3; color: #171717; }
+html[data-dev-theme="dark"] body { background: #0e0f12; color: #e8eaed; }
+
+.dev-signin { display: grid; place-items: center; height: 100%; }
+.dev-signin form {
+  display: grid; gap: 12px; width: min(380px, 90vw); padding: 32px; border-radius: 8px;
+  background: #fff; color: #171717; box-shadow: 0 8px 24px rgb(16 24 40 / 0.14);
+}
+.dev-signin h1 { margin: 0; font-size: 20px; }
+.dev-signin p { margin: 0; color: #5a6270; font-size: 13px; }
+.dev-signin label { font-weight: 600; font-size: 13px; }
+.dev-signin select, .dev-signin button { height: 36px; font: inherit; border-radius: 6px; }
+.dev-signin select { border: 1px solid #8a929e; padding: 0 8px; }
+.dev-signin button { border: none; background: #d51709; color: #fff; font-weight: 600; cursor: pointer; }
+.dev-signin .dev-check { display: flex; gap: 8px; align-items: center; font-weight: 400; }
+
+.dev-host { display: grid; grid-template-rows: auto 1fr; height: 100%; }
+.dev-bar {
+  display: flex; align-items: center; gap: 16px; padding: 6px 16px; font-size: 13px;
+  background: #171717; color: #fff;
+}
+.dev-bar select, .dev-bar button { font: inherit; }
+.dev-spacer { flex: 1; }
+.dev-mount { min-height: 0; }

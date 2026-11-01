@@ -17,12 +17,12 @@ public static class ConversationEndpoints
     public static RouteGroupBuilder MapConversationEndpoints(this RouteGroupBuilder api)
     {
         var group = api.MapGroup("/conversations").WithTags("Conversations");
-        group.MapGet("/", ListMine);
-        group.MapPost("/", Create);
-        group.MapGet("/{conversationId:guid}", Get);
-        group.MapPatch("/{conversationId:guid}", Rename);
-        group.MapPost("/{conversationId:guid}/members", AddMember);
-        group.MapDelete("/{conversationId:guid}/members/{userId}", RemoveMember);
+        group.MapGet("/", ListMine).Produces<ConversationDto[]>();
+        group.MapPost("/", Create).Produces<ConversationDto>(StatusCodes.Status201Created).Produces<ConversationDto>();
+        group.MapGet("/{conversationId:guid}", Get).Produces<ConversationDto>();
+        group.MapPatch("/{conversationId:guid}", Rename).Produces<ConversationDto>();
+        group.MapPost("/{conversationId:guid}/members", AddMember).Produces<UserDto>(StatusCodes.Status201Created);
+        group.MapDelete("/{conversationId:guid}/members/{userId}", RemoveMember).Produces(StatusCodes.Status204NoContent);
         return api;
     }
 

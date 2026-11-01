@@ -15,16 +15,16 @@ public static class ChannelEndpoints
     public static RouteGroupBuilder MapChannelEndpoints(this RouteGroupBuilder api)
     {
         var inWorkspace = api.MapGroup("/workspaces/{workspaceId:guid}/channels").WithTags("Channels");
-        inWorkspace.MapGet("/", List);
-        inWorkspace.MapPost("/", Create);
+        inWorkspace.MapGet("/", List).Produces<ChannelDto[]>();
+        inWorkspace.MapPost("/", Create).Produces<ChannelDto>(StatusCodes.Status201Created);
 
         var channels = api.MapGroup("/channels/{channelId:guid}").WithTags("Channels");
-        channels.MapGet("/", Get);
-        channels.MapPatch("/", Update);
-        channels.MapPost("/archive", Archive);
-        channels.MapGet("/members", ListMembers);
-        channels.MapPost("/members", AddMember);
-        channels.MapDelete("/members/{userId}", RemoveMember);
+        channels.MapGet("/", Get).Produces<ChannelDto>();
+        channels.MapPatch("/", Update).Produces<ChannelDto>();
+        channels.MapPost("/archive", Archive).Produces<ChannelDto>();
+        channels.MapGet("/members", ListMembers).Produces<ChannelMemberDto[]>();
+        channels.MapPost("/members", AddMember).Produces<ChannelMemberAddedDto>(StatusCodes.Status201Created);
+        channels.MapDelete("/members/{userId}", RemoveMember).Produces(StatusCodes.Status204NoContent);
         return api;
     }
 
@@ -205,7 +205,7 @@ public static class ChannelEndpoints
         await db.SaveChangesAsync(ct);
         await notifications.DeliverAsync(activity, ct);
 
-        return TypedResults.Created($"/api/v1/channels/{channelId}/members/{targetId}", new { userId = targetId });
+        return TypedResults.Created($"/api/v1/channels/{channelId}/members/{targetId}", new ChannelMemberAddedDto(targetId));
     }
 
     private static async Task<IResult> RemoveMember(

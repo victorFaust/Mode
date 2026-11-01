@@ -166,3 +166,37 @@ Status is derived from live connections and client heartbeats: Available, then A
 ## D36. Search is PostgreSQL full-text search
 
 Search uses english stemming and web-style syntax (quotes, `OR`, `-word`). Results are limited to readable rooms before ranking, so nothing hidden affects counts or order. File results cover current, clean, undeleted versions only. Snippets are returned as plain text with highlight offsets, never as HTML. People search follows the directory rule: none for guests.
+
+## D37. The client is a mountable module; the host owns sign-in and the token
+
+`mountMode(element, { getToken, apiBaseUrl, theme })` is the whole contract. Mode calls `getToken` before every request and on every realtime reconnect, so the host decides how tokens are cached and refreshed. The API serves no cross-origin requests until `Cors:AllowedOrigins` lists the host's origin. The dev shell avoids CORS by proxying everything through the Vite server.
+
+## D38. One store, one realtime connection, one controller
+
+State lives in a single Zustand store. All behaviour lives in `ModeController`, and SignalR events reach the store only through it. This keeps realtime updates, optimistic sends and REST results in one place. Components only read the store through selectors and call controller methods.
+
+## D39. Messages render as React elements, never as HTML
+
+Stored Markdown is rendered with react-markdown, with raw HTML skipped. Links are limited to http(s) and mailto and open with `rel="noopener noreferrer nofollow"`. Images in text are shown as their alt text. Search snippets arrive as plain text with offsets and are wrapped in `<mark>` on the client. Together with the server-side sanitizing in D23, nothing a user types can run as script.
+
+## D40. UBA brand colours, checked for contrast
+
+The accent is UBA red `#D51709` (`--text-brand-secondary` on ubagroup.com). White on it is about 5.3:1. Dark mode uses UBA's tint `#FFA19A` for red text. Neutrals follow UBA's greys. A host may pass a different accent, but it must keep 4.5:1 against white. Presence is shown with a shape as well as a colour. Both end-to-end flows run axe and fail on any serious or critical WCAG A/AA problem.
+
+## D41. The OpenAPI file is generated and committed
+
+`scripts/export-openapi.ps1` builds the API and writes `client/openapi.json` with the Swashbuckle CLI. The environment variable `MODE_OPENAPI_EXPORT=1` makes the API skip startup validation and background services, because no secrets are present during an export. The script then regenerates `client/src/api/schema.d.ts` with openapi-typescript. That tool runs through `npx` with TypeScript 5 because it needs the TypeScript 5 compiler API, which TypeScript 7 doesn't have. The generated files are committed, so builds never depend on a running API. Rerun the script after any API change.
+
+## D42. Drafts stay in the browser
+
+Unsent text is saved per user and per room in `localStorage` and cleared when the message is sent. Drafts never reach the server and don't move between devices. On shared PCs, signing out of the host doesn't clear them. If that matters for UBA's branch machines, the host can call `localStorage.clear()` on sign-out.
+
+## D43. The client focuses on chats; Channels and Activity are paused
+
+At the product owner's request, the first release of the client is chat only: direct and group chats with threads, reactions, mentions, files, presence and search. `client/src/app/features.ts` switches off the Channels and Activity sections. Their code and the API behind them remain and are still tested. While they are off:
+- the rail shows Chat, Files and Search;
+- channel lists are not loaded;
+- channel results are filtered out of search;
+- banners for channel activity are not shown.
+
+Turning a flag back on restores the section.

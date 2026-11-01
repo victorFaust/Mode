@@ -7,6 +7,9 @@ TestResults/
 .data/
 node_modules/
 dist/
+dist-lib/
+test-results/
+playwright-report/
 .venv/
 __pycache__/
 .pytest_cache/
