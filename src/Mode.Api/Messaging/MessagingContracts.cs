@@ -31,6 +31,8 @@ public sealed record MessageDto(
     DateTimeOffset CreatedAt,
     DateTimeOffset? EditedAt,
     bool IsDeleted,
+    /// <summary>True when the author deleted it themselves, so they can undo it.</summary>
+    bool DeletedByAuthor,
     int ReplyCount,
     DateTimeOffset? LastReplyAt,
     IReadOnlyList<ReactionSummaryDto> Reactions,

@@ -7,14 +7,15 @@ test("sign in, post a message in a chat and reply in a thread", async ({ page })
   await startChat(page);
 
   const composer = page.getByRole("textbox", { name: "Message Bola Adeyemi" });
-  await composer.fill(`Kick-off notes ${id} are **ready**`);
+  await composer.pressSequentially(`Kick-off notes ${id} are **ready**`);
+  await expect(composer.locator("strong", { hasText: "ready" })).toBeVisible();
   await composer.press("Enter");
 
   const feed = page.getByRole("log", { name: "Messages in Bola Adeyemi" });
   const message = feed.getByRole("article").filter({ hasText: `Kick-off notes ${id}` });
   await expect(message).toBeVisible();
   await expect(message.locator("strong", { hasText: "ready" })).toBeVisible();
-  await expect(composer).toHaveValue("");
+  await expect(composer).toHaveText("");
 
   await message.hover();
   await message.getByRole("button", { name: "Reply in thread" }).click();

@@ -199,4 +199,18 @@ At the product owner's request, the first release of the client is chat only: di
 - channel results are filtered out of search;
 - banners for channel activity are not shown.
 
+## D44. A rich-text composer that stores Markdown, and Undo for your own delete
+
+As in Teams, formatting shows while you type instead of as raw `**` markers. The composer and the edit box use Lexical (MIT). It offers:
+- a Format toolbar: bold, italic, strikethrough, inline code, link, bulleted and numbered lists, quote and code block;
+- shortcuts: Ctrl+B, Ctrl+I, Ctrl+E for code and Ctrl+Shift+X for strikethrough, plus Markdown shortcuts such as `**bold**` and `- `.
+
+The editor reads and writes the same Markdown subset the server sanitizes (D23). Mentions are stored as `@{userId}`, so the stored format and the API are unchanged.
+
+Underline is blocked because Markdown has no form for it.
+
+Edit and Delete are shown in the hover toolbar on your own messages. Up arrow in an empty composer edits your last message.
+
+When an author deletes their own message, they can choose Undo. `POST /messages/{id}/restore` brings the text back from the delete record kept by D7 and records a `Restore` change. A message removed by a channel or workspace owner can't be restored by its author.
+
 Turning a flag back on restores the section.

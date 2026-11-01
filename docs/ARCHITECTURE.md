@@ -223,6 +223,7 @@ Base path `/api/v1`. Every request carries `Authorization: Bearer <host JWT>`. E
 | | `GET /messages/{id}/replies` | `?after=&limit=` | page of `MessageDto` (oldest first) |
 | | `PATCH /messages/{id}` | `{ bodyMarkdown }` | `MessageDto` (author only) |
 | | `DELETE /messages/{id}` | | `204` (author, or a channel or workspace owner) |
+| | `POST /messages/{id}/restore` | | `MessageDto` (author, only for their own delete) |
 | | `PUT / DELETE /messages/{id}/reactions/{emoji}` | | `ReactionSummaryDto[]` |
 | Read state | `PUT /channels/{id}/read`, `PUT /conversations/{id}/read` | `{ sequence }` | `{ lastReadSequence }` (only moves forward; clears feed items up to it) |
 | | `PUT /channels/{id}/mute`, `PUT /conversations/{id}/mute` | `{ muted }` | `{ muted }` |
@@ -402,6 +403,7 @@ Mode has no sign-in screens. If the host runs on a different origin from the API
 | `api/` | `schema.d.ts` generated from `client/openapi.json` (`scripts/export-openapi.ps1`), and the `openapi-fetch` client |
 | `realtime/` | the single SignalR connection: retries forever, rejoins rooms and replays missed changes after reconnecting, sends heartbeats, presence subscriptions |
 | `store/` | Zustand store (state only), pure mutations, and `ModeController`, which turns REST results and realtime events into state changes |
+| `editor/` | the Lexical rich-text editor used by the composer and the edit box. It converts to and from stored Markdown and handles mention chips (D44) |
 | `app/`, `views/`, `components/` | shell, rail and lists, message list (virtualized), composer, side panes, activity, search, dialogs |
 | `theme/tokens.css` | type scale, spacing, radii, and light and dark colours (UBA red `#D51709` accent) |
 | `dev/` | the standalone dev shell: picks a seeded user and gets a token from the mock issuer |
@@ -412,7 +414,12 @@ Mode has no sign-in screens. If the host runs on a different origin from the API
 
 **Tests:**
 - `npm test` runs the component and unit tests with Vitest.
-- `npm run e2e` runs two Playwright flows against the real stack, each with an axe accessibility check: (1) sign in, post in a direct chat and reply in a thread; (2) upload a file in a chat, then find it by search. They run one at a time because both use the same seeded users' chat. Start the Docker services before running them.
+- `npm run e2e` runs three Playwright flows against the real stack, each with an axe accessibility check:
+  1. sign in, post in a direct chat and reply in a thread;
+  2. edit a message, delete it and undo the delete;
+  3. upload a file in a chat, then find it by search.
+
+  They run one at a time because they all use the same seeded users' chat. Start the Docker services before running them.
 
 **Scope for now:** chats only. Channels and Activity are switched off in `client/src/app/features.ts` (D43).
 

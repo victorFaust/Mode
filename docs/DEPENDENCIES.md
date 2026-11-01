@@ -55,6 +55,7 @@ All dependencies are open source and free for internal use. Licences were taken 
 | @radix-ui/react-dialog, -dropdown-menu, -popover, -tooltip | MIT | accessible dialogs, menus and tooltips |
 | cmdk | MIT | Ctrl/Cmd + K command bar |
 | @emoji-mart/react, @emoji-mart/data, emoji-mart | MIT | emoji picker (loaded on first open) |
+| lexical, @lexical/react, -markdown, -rich-text, -list, -code, -link, -utils, -selection 0.53.0 | MIT | rich-text composer and edit box that store Markdown (D44) |
 | lucide-react | ISC | icons |
 | vite, @vitejs/plugin-react, vitest | MIT | build and tests |
 | typescript | Apache 2.0 | type checking |

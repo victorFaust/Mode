@@ -1,8 +1,9 @@
 import { AlertCircle, Copy, MessageSquareReply, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
-import { memo, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useMode, useController } from "../app/context";
 import { EmojiPicker } from "../components/EmojiPicker";
-import { Avatar, Button, IconButton, Menu, MenuItem, MenuSeparator } from "../components/ui";
+import { Avatar, Button, Dialog, DialogActions, IconButton, Menu, MenuItem } from "../components/ui";
+import { MAX_MESSAGE_LENGTH, RichEditor, type RichEditorHandle } from "../editor/RichEditor";
 import { formatFull, formatListTime, formatTime } from "../lib/format";
 import { toEditableText } from "../lib/mentions";
 import type { LocalMessage } from "../store/store";
@@ -25,18 +26,21 @@ export const MessageItem = memo(function MessageItem({ message, grouped, canMana
   const controller = useController();
   const meId = useMode((s) => s.me?.id);
   const status = useMode((s) => s.presence[message.author.id]?.status);
-  const [editing, setEditing] = useState(false);
+  const editing = useMode((s) => s.editingMessageId === message.id);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const mine = message.author.id === meId;
   const pending = message.pending;
   const canReply = !inThread && !message.parentMessageId && !pending && !message.isDeleted;
+  const canEdit = mine && canPost && !message.isDeleted && !pending;
+  const canDelete = (mine || canManage) && canPost && !message.isDeleted && !pending;
   const titleId = `msg-${message.id}`;
 
   const run = (action: () => Promise<void>) => void action().catch((e: Error) => controller.toastError(e.message));
 
   return (
     <article className={styles.message} data-roving tabIndex={-1} aria-labelledby={titleId}
-      data-grouped={grouped} data-pending={pending?.state} data-active={menuOpen} data-highlight={highlighted}>
+      data-grouped={grouped} data-pending={pending?.state} data-active={menuOpen || editing} data-highlight={highlighted}>
       <div className={styles.gutter}>
         {grouped
           ? <time className={styles.groupedTime} dateTime={message.createdAt} title={formatFull(message.createdAt)}>{formatTime(message.createdAt)}</time>
@@ -51,8 +55,14 @@ export const MessageItem = memo(function MessageItem({ message, grouped, canMana
           {message.editedAt && !message.isDeleted && <span className={styles.edited}>Edited</span>}
         </div>
 
-        {message.isDeleted ? <p className={styles.deleted}>This message was deleted.</p>
-          : editing ? <EditBox message={message} onDone={() => setEditing(false)} />
+        {message.isDeleted ? (
+          <p className={styles.deleted}>
+            This message was deleted.{" "}
+            {mine && message.deletedByAuthor && canPost && (
+              <button type="button" className={styles.linkButton} onClick={() => run(() => controller.restore(message))}>Undo</button>
+            )}
+          </p>
+        ) : editing ? <EditBox message={message} onDone={() => controller.startEdit(null)} />
           : message.bodyMarkdown && <MessageBody markdown={message.bodyMarkdown} />}
 
         {!message.isDeleted && message.files.length > 0 && (
@@ -105,37 +115,47 @@ export const MessageItem = memo(function MessageItem({ message, grouped, canMana
               <MessageSquareReply size={16} aria-hidden />
             </IconButton>
           )}
+          {canEdit && (
+            <IconButton label="Edit" size="small" onClick={() => controller.startEdit(message.id)}><Pencil size={16} aria-hidden /></IconButton>
+          )}
+          {canDelete && (
+            <IconButton label="Delete" size="small" onClick={() => setConfirmDelete(true)}><Trash2 size={16} aria-hidden /></IconButton>
+          )}
           <Menu align="end" onOpenChange={setMenuOpen} trigger={<IconButton label="More actions" size="small"><MoreHorizontal size={16} aria-hidden /></IconButton>}>
             <MenuItem onSelect={() => void navigator.clipboard?.writeText(toEditableText(message.bodyMarkdown, controller.store.getState().users).text)}>
               <Copy size={16} aria-hidden /> Copy text
             </MenuItem>
-            {mine && canPost && <MenuItem onSelect={() => setEditing(true)}><Pencil size={16} aria-hidden /> Edit</MenuItem>}
-            {(mine || canManage) && canPost && (
-              <>
-                <MenuSeparator />
-                <MenuItem danger onSelect={() => {
-                  if (window.confirm("Delete this message? Everyone will see that it was deleted.")) run(() => controller.remove(message));
-                }}><Trash2 size={16} aria-hidden /> Delete</MenuItem>
-              </>
-            )}
+            {canEdit && <MenuItem onSelect={() => controller.startEdit(message.id)}><Pencil size={16} aria-hidden /> Edit</MenuItem>}
+            {canDelete && <MenuItem danger onSelect={() => setConfirmDelete(true)}><Trash2 size={16} aria-hidden /> Delete</MenuItem>}
           </Menu>
         </div>
       )}
+
+      <Dialog open={confirmDelete} onOpenChange={setConfirmDelete} title="Delete this message?"
+        description={mine ? "Everyone will see that a message was deleted. You can undo it straight after." : "Everyone will see that a message was deleted."}>
+        <DialogActions>
+          <Button variant="ghost" onClick={() => setConfirmDelete(false)}>Cancel</Button>
+          <Button variant="primary" autoFocus onClick={() => { setConfirmDelete(false); run(() => controller.remove(message)); }}>Delete</Button>
+        </DialogActions>
+      </Dialog>
     </article>
   );
 });
 
 function EditBox({ message, onDone }: { message: LocalMessage; onDone: () => void }) {
   const controller = useController();
-  const users = useMode((s) => s.users);
-  const [{ text, picked }, setState] = useState(() => toEditableText(message.bodyMarkdown, users));
+  const editorRef = useRef<RichEditorHandle>(null);
   const [busy, setBusy] = useState(false);
+  const [state, setState] = useState({ empty: false, length: message.bodyMarkdown.length });
 
-  const save = async () => {
+  useEffect(() => editorRef.current?.focus(), []);
+
+  const save = async (markdown: string) => {
+    if (!markdown || markdown.length > MAX_MESSAGE_LENGTH) return;
+    if (markdown === message.bodyMarkdown) return onDone();
     setBusy(true);
     try {
-      await controller.edit(message, text, picked);
-      onDone();
+      await controller.edit(message, markdown, []);
     } catch (e) {
       controller.toastError(e instanceof Error ? e.message : "Could not save the edit.");
     } finally {
@@ -145,16 +165,15 @@ function EditBox({ message, onDone }: { message: LocalMessage; onDone: () => voi
 
   return (
     <div className={styles.composerBox} style={{ marginTop: 4 }}>
-      <textarea className={styles.textarea} value={text} autoFocus aria-label="Edit message" rows={2}
-        onChange={(e) => setState({ text: e.target.value, picked })}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") { e.preventDefault(); onDone(); }
-          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void save(); }
-        }} />
+      <RichEditor ref={editorRef} ariaLabel="Edit message" placeholder="Edit message" initialMarkdown={message.bodyMarkdown}
+        toolbar members={[]} allowChannelMention={message.room.type === "Channel"}
+        onSubmit={(markdown) => void save(markdown)} onEscape={onDone}
+        onChange={(markdown, empty) => setState({ empty, length: markdown.length })} />
       <div className={styles.composerFooter} style={{ justifyContent: "flex-end", gap: 8 }}>
         <span className={styles.composerHint}>Enter to save, Esc to cancel</span>
         <Button variant="ghost" onClick={onDone}>Cancel</Button>
-        <Button variant="primary" onClick={() => void save()} disabled={busy || !text.trim()}>Save</Button>
+        <Button variant="primary" disabled={busy || state.empty || state.length > MAX_MESSAGE_LENGTH}
+          onClick={() => void save(editorRef.current?.getMarkdown() ?? "")}>Save</Button>
       </div>
     </div>
   );

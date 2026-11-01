@@ -35,6 +35,7 @@ public static class MessageEndpoints
         messages.MapGet("/replies", Replies).Produces<MessageDto[]>();
         messages.MapPatch("/", Edit).Produces<MessageDto>();
         messages.MapDelete("/", Delete).Produces(StatusCodes.Status204NoContent);
+        messages.MapPost("/restore", Restore).Produces<MessageDto>();
         messages.MapPut("/reactions/{emoji}", AddReaction).Produces<ReactionSummaryDto[]>();
         messages.MapDelete("/reactions/{emoji}", RemoveReaction).Produces<ReactionSummaryDto[]>();
         return api;
@@ -249,6 +250,44 @@ public static class MessageEndpoints
 
         await notifier.MessageDeletedAsync(room, sequence, messageId, now);
         return TypedResults.NoContent();
+    }
+
+    /// <summary>Undo for the author's own delete: brings back the text kept in MessageEdits.</summary>
+    private static async Task<IResult> Restore(Guid messageId, [AsParameters] MessageDependencies deps, CancellationToken ct)
+    {
+        var (user, db, policy, store, _, _, notifier, clock) = deps;
+        var permission = await policy.ForMessageAsync(user, messageId, ct);
+        if (!permission.Has(Permission.Read)) return Problems.NotFound();
+        if (!permission.Has(Permission.Restore)) return Problems.Forbidden("Only the author can undo deleting their own message.");
+
+        var room = RoomRef.Of(await db.Messages.AsNoTracking().SingleAsync(m => m.Id == messageId, ct));
+        await using (var transaction = await db.Database.BeginTransactionAsync(ct))
+        {
+            var sequence = await store.NextSequenceAsync(room, ct);
+            var message = await db.Messages.SingleAsync(m => m.Id == messageId, ct);
+            if (message.DeletedAt is null) return TypedResults.Ok(await store.GetDtoAsync(messageId, ct));
+
+            var deletion = await db.MessageEdits
+                .Where(e => e.MessageId == messageId && e.Kind == MessageChangeKind.Delete)
+                .OrderByDescending(e => e.ChangedAt)
+                .FirstAsync(ct);
+            db.MessageEdits.Add(new MessageEdit
+            {
+                Id = Guid.NewGuid(), MessageId = messageId, Kind = MessageChangeKind.Restore,
+                PreviousBodyMarkdown = "", ChangedByUserId = user.Id, ChangedAt = clock.GetUtcNow(),
+            });
+            message.BodyMarkdown = deletion.PreviousBodyMarkdown;
+            message.DeletedAt = null;
+            message.DeletedByUserId = null;
+            message.UpdatedSequence = sequence;
+
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+        }
+
+        var dto = await store.GetDtoAsync(messageId, ct);
+        await notifier.MessageEditedAsync(dto);
+        return TypedResults.Ok(dto);
     }
 
     private static Task<IResult> AddReaction(Guid messageId, string emoji, [AsParameters] MessageDependencies deps, CancellationToken ct) =>
