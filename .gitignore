@@ -1,0 +1,12 @@
+bin/
+obj/
+.vs/
+*.user
+TestResults/
+.env
+.data/
+node_modules/
+dist/
+.venv/
+__pycache__/
+.pytest_cache/
