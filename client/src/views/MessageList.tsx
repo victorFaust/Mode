@@ -80,18 +80,17 @@ export function MessageList({ room, title, canPost, canManage }: { room: RoomRef
     lastKey.current = newLast;
   }, [rows, virtualizer, scrollToBottom, meId]);
 
+  const reveal = useMode((s) => s.reveal);
   useEffect(() => {
-    const onReveal = (e: Event) => {
-      const id = (e as CustomEvent<string>).detail;
-      const index = rows.findIndex((r) => r.key === id);
-      if (index < 0) return;
-      virtualizer.scrollToIndex(index + 1, { align: "center" });
-      setHighlight(id);
-      setTimeout(() => setHighlight(null), 2000);
-    };
-    window.addEventListener("mode:reveal", onReveal);
-    return () => window.removeEventListener("mode:reveal", onReveal);
-  }, [rows, virtualizer]);
+    if (!reveal) return;
+    const index = rows.findIndex((r) => r.key === reveal);
+    if (index < 0) return;
+    controller.clearReveal();
+    virtualizer.scrollToIndex(index + 1, { align: "center" });
+    setHighlight(reveal);
+    const timer = setTimeout(() => setHighlight(null), 2000);
+    return () => clearTimeout(timer);
+  }, [reveal, rows, virtualizer, controller]);
 
   const onScroll = () => {
     const el = scrollRef.current;

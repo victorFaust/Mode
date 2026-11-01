@@ -37,7 +37,20 @@ public sealed record MessageDto(
     DateTimeOffset? LastReplyAt,
     IReadOnlyList<ReactionSummaryDto> Reactions,
     IReadOnlyList<MentionDto> Mentions,
-    IReadOnlyList<AttachmentDto> Files);
+    IReadOnlyList<AttachmentDto> Files,
+    bool IsPinned,
+    /// <summary>The forwarded copy shown as a card under the note in <see cref="BodyMarkdown"/>.</summary>
+    ForwardDto? Forwarded);
+
+/// <summary><see cref="MessageId"/> is null when the original no longer exists. Opening it still requires access to its room.</summary>
+public sealed record ForwardDto(Guid? MessageId, UserDto Author, DateTimeOffset CreatedAt, string BodyMarkdown);
+
+public sealed record PinDto(MessageDto Message, UserDto PinnedBy, DateTimeOffset PinnedAt);
+
+/// <summary>One version of a message's text, oldest first; the last one is the current text.</summary>
+public sealed record MessageVersionDto(string BodyMarkdown, DateTimeOffset WrittenAt);
+
+public sealed record ForwardMessageRequest(Guid? Id, RoomRef? To, string? BodyMarkdown);
 
 /// <summary>
 /// Newest first; pass <see cref="NextBefore"/> as <c>before</c> to get older messages. Pages requested with <c>after</c>
@@ -53,7 +66,10 @@ public sealed record ActivityDto(
     Guid Id, ActivityType Type, string ActorUserId, Guid? WorkspaceId, Guid? ChannelId, Guid? ConversationId, Guid? MessageId, DateTimeOffset CreatedAt);
 
 public sealed record ConversationDto(
-    Guid Id, ConversationType Type, string? Name, IReadOnlyList<UserDto> Members, long LastSequence, DateTimeOffset CreatedAt);
+    Guid Id, ConversationType Type, string? Name, IReadOnlyList<UserDto> Members, long LastSequence, DateTimeOffset CreatedAt,
+    bool IsPinned, bool IsHidden);
+
+public sealed record ConversationSettingsRequest(bool? IsPinned, bool? IsHidden);
 
 public sealed record CreateConversationRequest(ConversationType? Type, string? UserId, IReadOnlyList<string>? UserIds, string? Name);
 

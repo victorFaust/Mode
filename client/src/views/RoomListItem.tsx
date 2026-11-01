@@ -6,9 +6,9 @@ import { useController, useMode } from "../app/context";
 import { Badge } from "../components/ui";
 import styles from "./views.module.css";
 
-/** One channel or chat in a list, with unread, mention and mute state. */
-export function RoomListItem({ room, name, icon, preview, time }: {
-  room: RoomRef; name: string; icon: ReactNode; preview?: string; time?: string;
+/** One channel or chat in a list, with unread, mention and mute state, and an optional options menu. */
+export function RoomListItem({ room, name, icon, preview, time, menu }: {
+  room: RoomRef; name: string; icon: ReactNode; preview?: string; time?: string; menu?: ReactNode;
 }) {
   const controller = useController();
   const key = roomKey(room);
@@ -23,7 +23,7 @@ export function RoomListItem({ room, name, icon, preview, time }: {
     .filter(Boolean).join(", ");
 
   return (
-    <li>
+    <li className={menu ? styles.roomRow : undefined}>
       <button type="button" data-roving className={styles.roomItem} aria-current={current ? "true" : undefined}
         data-unread={hasUnread} data-muted={muted} aria-label={label} onClick={() => controller.openRoom(room)}>
         {icon}
@@ -37,6 +37,7 @@ export function RoomListItem({ room, name, icon, preview, time }: {
         {muted && <BellOff size={14} aria-hidden />}
         {mentions > 0 ? <Badge count={mentions} label={`${mentions} mentions`} /> : hasUnread && <Badge count={unread} muted label={`${unread} unread`} />}
       </button>
+      {menu && <span className={styles.roomMenu}>{menu}</span>}
     </li>
   );
 }

@@ -21,6 +21,7 @@ public static class ConversationEndpoints
         group.MapPost("/", Create).Produces<ConversationDto>(StatusCodes.Status201Created).Produces<ConversationDto>();
         group.MapGet("/{conversationId:guid}", Get).Produces<ConversationDto>();
         group.MapPatch("/{conversationId:guid}", Rename).Produces<ConversationDto>();
+        group.MapPut("/{conversationId:guid}/settings", ChangeSettings).Produces<ConversationDto>();
         group.MapPost("/{conversationId:guid}/members", AddMember).Produces<UserDto>(StatusCodes.Status201Created);
         group.MapDelete("/{conversationId:guid}/members/{userId}", RemoveMember).Produces(StatusCodes.Status204NoContent);
         return api;
@@ -40,8 +41,26 @@ public static class ConversationEndpoints
             .Select(g => new { Id = g.Key!.Value, At = g.Max(m => m.CreatedAt) })
             .ToDictionaryAsync(x => x.Id, x => x.At, ct);
 
-        var dtos = await ToDtosAsync(conversations, directory, ct);
+        var dtos = await ToDtosAsync(conversations, user, directory, ct);
         return TypedResults.Ok(dtos.OrderByDescending(c => latest.GetValueOrDefault(c.Id, c.CreatedAt)));
+    }
+
+    /// <summary>Pin or hide a chat in your own list. Nobody else sees these settings.</summary>
+    private static async Task<IResult> ChangeSettings(
+        Guid conversationId, ConversationSettingsRequest body, CurrentUser user, ModeDbContext db, AccessPolicy policy,
+        IUserDirectory directory, RealtimeNotifier notifier, CancellationToken ct)
+    {
+        if (!(await policy.ForConversationAsync(user, conversationId, ct)).Has(Permission.Read)) return Problems.NotFound();
+
+        var member = await db.ConversationMembers.SingleAsync(m => m.ConversationId == conversationId && m.UserId == user.Id, ct);
+        member.IsPinned = body.IsPinned ?? member.IsPinned;
+        member.IsHidden = body.IsHidden ?? member.IsHidden;
+        await db.SaveChangesAsync(ct);
+
+        var conversation = await db.Conversations.Include(c => c.Members).AsNoTracking().SingleAsync(c => c.Id == conversationId, ct);
+        var dto = (await ToDtosAsync([conversation], user, directory, ct))[0];
+        await notifier.ConversationSettingsChangedAsync(user.Id, dto);
+        return TypedResults.Ok(dto);
     }
 
     private static async Task<IResult> Get(
@@ -49,7 +68,7 @@ public static class ConversationEndpoints
     {
         if (!(await policy.ForConversationAsync(user, conversationId, ct)).Has(Permission.Read)) return Problems.NotFound();
         var conversation = await db.Conversations.Include(c => c.Members).AsNoTracking().SingleAsync(c => c.Id == conversationId, ct);
-        return TypedResults.Ok((await ToDtosAsync([conversation], directory, ct))[0]);
+        return TypedResults.Ok((await ToDtosAsync([conversation], user, directory, ct))[0]);
     }
 
     private static async Task<IResult> Create(
@@ -102,12 +121,12 @@ public static class ConversationEndpoints
             return await ExistingAsync(await db.Conversations.Where(c => c.DirectKey == directKey).Select(c => c.Id).SingleAsync(ct));
         }
 
-        return TypedResults.Created($"/api/v1/conversations/{conversation.Id}", (await ToDtosAsync([conversation], directory, ct))[0]);
+        return TypedResults.Created($"/api/v1/conversations/{conversation.Id}", (await ToDtosAsync([conversation], user, directory, ct))[0]);
 
         async Task<IResult> ExistingAsync(Guid id)
         {
             var existing = await db.Conversations.Include(c => c.Members).AsNoTracking().SingleAsync(c => c.Id == id, ct);
-            return TypedResults.Ok((await ToDtosAsync([existing], directory, ct))[0]);
+            return TypedResults.Ok((await ToDtosAsync([existing], user, directory, ct))[0]);
         }
     }
 
@@ -123,7 +142,7 @@ public static class ConversationEndpoints
         var conversation = await db.Conversations.Include(c => c.Members).SingleAsync(c => c.Id == conversationId, ct);
         conversation.Name = name;
         await db.SaveChangesAsync(ct);
-        return TypedResults.Ok((await ToDtosAsync([conversation], directory, ct))[0]);
+        return TypedResults.Ok((await ToDtosAsync([conversation], user, directory, ct))[0]);
     }
 
     private static async Task<IResult> AddMember(
@@ -180,12 +199,16 @@ public static class ConversationEndpoints
         string.CompareOrdinal(a, b) < 0 ? $"{a}|{b}" : $"{b}|{a}";
 
     private static async Task<IReadOnlyList<ConversationDto>> ToDtosAsync(
-        IReadOnlyList<Conversation> conversations, IUserDirectory directory, CancellationToken ct)
+        IReadOnlyList<Conversation> conversations, CurrentUser user, IUserDirectory directory, CancellationToken ct)
     {
         var users = await directory.GetManyAsync(conversations.SelectMany(c => c.Members.Select(m => m.UserId)).Distinct(), ct);
-        return conversations.Select(c => new ConversationDto(
-            c.Id, c.Type, c.Name,
-            c.Members.OrderBy(m => m.AddedAt).Select(m => WorkspaceEndpoints.ToUserDto(users, m.UserId)).ToList(),
-            c.LastSequence, c.CreatedAt)).ToList();
+        return conversations.Select(c =>
+        {
+            var me = c.Members.FirstOrDefault(m => m.UserId == user.Id);
+            return new ConversationDto(
+                c.Id, c.Type, c.Name,
+                c.Members.OrderBy(m => m.AddedAt).Select(m => WorkspaceEndpoints.ToUserDto(users, m.UserId)).ToList(),
+                c.LastSequence, c.CreatedAt, me?.IsPinned ?? false, me?.IsHidden ?? false);
+        }).ToList();
     }
 }

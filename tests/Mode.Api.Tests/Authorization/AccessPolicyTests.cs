@@ -190,20 +190,28 @@ public sealed class AccessPolicyTests(ApiFixture api)
         {
             Id = Guid.NewGuid(), ChannelId = channelId, Sequence = 2, AuthorUserId = author.Id, BodyMarkdown = "", CreatedAt = now, DeletedAt = now,
         };
+        var archived = new Message
+        {
+            Id = Guid.NewGuid(), ChannelId = world.Channels["archived"], Sequence = 1, AuthorUserId = author.Id, BodyMarkdown = "old", CreatedAt = now,
+        };
         var file = new FileAsset
         {
             Id = Guid.NewGuid(), ChannelId = channelId, Name = "a.txt", NormalizedName = "a.txt", CurrentVersionNo = 1,
             CreatedByUserId = author.Id, CreatedAt = now,
         };
-        db.Messages.AddRange(message, deleted);
+        db.Messages.AddRange(message, deleted, archived);
         db.FileAssets.Add(file);
         await db.SaveChangesAsync();
         var policy = new AccessPolicy(db);
 
-        Assert.Equal(Permission.Read | Permission.Post | Permission.Edit | Permission.Delete, await policy.ForMessageAsync(author, message.Id, default));
-        Assert.Equal(Permission.Read | Permission.Post | Permission.Delete, await policy.ForMessageAsync(world.Users["owner"], message.Id, default));
+        Assert.Equal(Permission.Read | Permission.Post | Permission.Edit | Permission.Delete | Permission.Pin | Permission.ViewHistory,
+            await policy.ForMessageAsync(author, message.Id, default));
+        Assert.Equal(Permission.Read | Permission.Post | Permission.Delete | Permission.Pin, await policy.ForMessageAsync(world.Users["owner"], message.Id, default));
         Assert.Equal(Permission.None, await policy.ForMessageAsync(world.Users["member2"], message.Id, default));
         Assert.Equal(Permission.Read | Permission.Post, await policy.ForMessageAsync(author, deleted.Id, default));
+        // Archived channels are read-only: no posting, editing or pinning, but the author can still see earlier versions.
+        Assert.Equal(Permission.Read | Permission.ViewHistory, await policy.ForMessageAsync(author, archived.Id, default));
+        Assert.Equal(Permission.Read, await policy.ForMessageAsync(world.Users["member2"], archived.Id, default));
 
         Assert.Equal(Permission.Read | Permission.Delete, await policy.ForFileAsync(author, file.Id, default));
         Assert.Equal(Permission.Read | Permission.Delete, await policy.ForFileAsync(world.Users["owner"], file.Id, default));

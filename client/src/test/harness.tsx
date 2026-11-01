@@ -44,6 +44,7 @@ export function message(overrides: Partial<Message> & { id: string; sequence: nu
     reactions: [],
     mentions: [],
     files: [],
+    isPinned: false,
     ...overrides,
   };
 }

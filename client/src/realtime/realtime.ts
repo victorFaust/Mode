@@ -1,7 +1,7 @@
 import {
   HttpTransportType, HubConnection, HubConnectionBuilder, HubConnectionState, LogLevel, type IRetryPolicy,
 } from "@microsoft/signalr";
-import type { FileDto, Message, Presence, Reaction, RoomRef } from "../api/client";
+import type { Conversation, FileDto, Message, Presence, Reaction, RoomRef } from "../api/client";
 
 export interface JoinResult {
   room: RoomRef;
@@ -24,6 +24,7 @@ export interface RealtimeHandlers {
     channelId: string | null; conversationId: string | null; messageId: string | null;
   }): void;
   readMarkerChanged(e: { room: RoomRef; lastReadSequence: number }): void;
+  conversationSettingsChanged(e: Conversation): void;
   presenceChanged(e: Presence): void;
   roomAccessRevoked(e: { room: RoomRef }): void;
   fileUpdated(e: { room: RoomRef; file: FileDto }): void;
@@ -71,6 +72,7 @@ export class RealtimeService {
     on("activityRead");
     on("notification");
     on("readMarkerChanged");
+    on("conversationSettingsChanged");
     on("presenceChanged");
     on("roomAccessRevoked");
     on("fileUpdated");

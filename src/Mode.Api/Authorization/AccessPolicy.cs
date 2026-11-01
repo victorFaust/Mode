@@ -18,6 +18,8 @@ public enum Permission
     Edit = 32,
     Delete = 64,
     Restore = 128,
+    Pin = 256,
+    ViewHistory = 512,
 }
 
 public sealed record ReadableRooms(IReadOnlyList<Guid> WorkspaceIds, IReadOnlyList<Guid> ChannelIds, IReadOnlyList<Guid> ConversationIds);
@@ -251,13 +253,18 @@ public sealed class AccessPolicy(ModeDbContext db)
         return permission;
     }
 
-    /// <summary>Authors may undo deleting their own message; a message removed by an owner stays removed.</summary>
+    /// <summary>
+    /// Authors may undo deleting their own message; a message removed by an owner stays removed.
+    /// Anyone who can post may pin. Only the author sees earlier versions.
+    /// </summary>
     internal static Permission MessagePermissions(Permission room, bool inChannel, bool isAuthor, bool deleted, bool deletedByAuthor = false)
     {
         if (!room.Has(Permission.Read)) return Permission.None;
 
         var permission = Permission.Read;
         if (room.Has(Permission.Post)) permission |= Permission.Post;
+        if (!deleted && room.Has(Permission.Post)) permission |= Permission.Pin;
+        if (!deleted && isAuthor) permission |= Permission.ViewHistory;
         if (!deleted && isAuthor && room.Has(Permission.Post)) permission |= Permission.Edit | Permission.Delete;
         if (!deleted && inChannel && room.Has(Permission.Manage)) permission |= Permission.Delete;
         if (deleted && isAuthor && deletedByAuthor && room.Has(Permission.Post)) permission |= Permission.Restore;

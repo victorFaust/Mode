@@ -28,6 +28,12 @@ public class Message
     public int ReplyCount { get; set; }
     public DateTimeOffset? LastReplyAt { get; set; }
 
+    /// <summary>Server-made copy of a forwarded message. It can't be edited, so the forward card can't be faked.</summary>
+    public string? ForwardedBodyMarkdown { get; set; }
+    public Guid? ForwardedFromMessageId { get; set; }
+    public string? ForwardedFromUserId { get; set; }
+    public DateTimeOffset? ForwardedFromCreatedAt { get; set; }
+
     public Channel? Channel { get; set; }
     public Conversation? Conversation { get; set; }
     public Message? Parent { get; set; }
@@ -35,9 +41,19 @@ public class Message
     public List<Reaction> Reactions { get; set; } = [];
     public List<Mention> Mentions { get; set; } = [];
     public List<MessageAttachment> Attachments { get; set; } = [];
+    public PinnedMessage? Pin { get; set; }
 }
 
-/// <summary>Prior body text kept for compliance; never shown to regular users.</summary>
+public class PinnedMessage
+{
+    public Guid MessageId { get; set; }
+    public required string PinnedByUserId { get; set; }
+    public DateTimeOffset PinnedAt { get; set; }
+
+    public Message? Message { get; set; }
+}
+
+/// <summary>Prior body text kept for compliance. Authors may see their own earlier edits; deleted text is never shown to users.</summary>
 public class MessageEdit
 {
     public Guid Id { get; set; }

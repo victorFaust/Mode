@@ -213,4 +213,13 @@ Edit and Delete are shown in the hover toolbar on your own messages. Up arrow in
 
 When an author deletes their own message, they can choose Undo. `POST /messages/{id}/restore` brings the text back from the delete record kept by D7 and records a `Restore` change. A message removed by a channel or workspace owner can't be restored by its author.
 
+## D45. Chat pins, forwarding, edit history and chat list settings (Prompt 7, chats only)
+
+Prompt 7 was cut down to chats while channels are paused (D43). Guests, the private-channel UI and the channel member list wait until channels return. Archived channels already stay read-only with their data kept; the authorization tests check that.
+
+- **Pinned messages.** Anyone who can post may pin a top-level message. A room holds at most 20 pins. Deleting a message unpins it, and restoring it doesn't pin it again. A pin takes a room sequence and goes out as `messageEdited`, so missed pins replay after a reconnect. The server works for channels too; the client shows pins in chats.
+- **Forwarding** copies the message into a chat the sender can post in, as a card under an optional note. The server makes the copy, and the copy can't be edited, so a card can't be faked. Mentions in the copy become plain names, so nobody is notified again. Files stay behind and are listed by name, so forwarding never gives a chat access to another chat's files. "View original" and message links open only for people who can read the original. Forwarding a forward that has no note passes on the original card instead of nesting cards. Forwarded text is searchable.
+- **Edit history.** This changes D7. Authors can see their own earlier versions. Text removed by a delete is never shown to users, and other people see only the "Edited" label.
+- **Pinned and hidden chats** are per person (`ConversationMember.IsPinned` and `IsHidden`). A new message in a hidden chat brings it back, as in Teams.
+
 Turning a flag back on restores the section.

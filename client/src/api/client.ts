@@ -19,6 +19,8 @@ export type NotificationSettings = Schemas["NotificationSettings"];
 export type SearchResponse = Schemas["SearchResponse"];
 export type HighlightedText = Schemas["HighlightedText"];
 export type Reaction = Schemas["ReactionSummaryDto"];
+export type Pin = Schemas["PinDto"];
+export type MessageVersion = Schemas["MessageVersionDto"];
 
 export interface Problem {
   title?: string;

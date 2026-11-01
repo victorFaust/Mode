@@ -14,9 +14,10 @@ internal sealed class MessageConfiguration : IEntityTypeConfiguration<Message>
         b.Property(m => m.Id).ValueGeneratedNever();
         b.Property(m => m.AuthorUserId).IsUserId();
         b.Property(m => m.DeletedByUserId).IsUserId();
+        b.Property(m => m.ForwardedFromUserId).IsUserId();
 
         b.Property<NpgsqlTsVector>(SearchVectorProperty)
-            .HasComputedColumnSql("to_tsvector('english', \"BodyMarkdown\")", stored: true);
+            .HasComputedColumnSql("to_tsvector('english', \"BodyMarkdown\" || ' ' || coalesce(\"ForwardedBodyMarkdown\", ''))", stored: true);
         b.HasIndex(SearchVectorProperty).HasMethod("GIN");
 
         b.HasIndex(m => new { m.ChannelId, m.Sequence }).IsUnique();
@@ -36,6 +37,19 @@ internal sealed class MessageConfiguration : IEntityTypeConfiguration<Message>
             .HasForeignKey(m => m.ConversationId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne(m => m.Parent).WithMany()
             .HasForeignKey(m => m.ParentMessageId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<Message>().WithMany()
+            .HasForeignKey(m => m.ForwardedFromMessageId).OnDelete(DeleteBehavior.SetNull);
+    }
+}
+
+internal sealed class PinnedMessageConfiguration : IEntityTypeConfiguration<PinnedMessage>
+{
+    public void Configure(EntityTypeBuilder<PinnedMessage> b)
+    {
+        b.HasKey(p => p.MessageId);
+        b.Property(p => p.PinnedByUserId).IsUserId();
+        b.HasOne(p => p.Message).WithOne(m => m.Pin)
+            .HasForeignKey<PinnedMessage>(p => p.MessageId).OnDelete(DeleteBehavior.Cascade);
     }
 }
 

@@ -22,5 +22,9 @@ public class ConversationMember
     public required string UserId { get; set; }
     public DateTimeOffset AddedAt { get; set; }
 
+    /// <summary>Per-person chat list settings. A new message in the chat unhides it.</summary>
+    public bool IsPinned { get; set; }
+    public bool IsHidden { get; set; }
+
     public Conversation? Conversation { get; set; }
 }

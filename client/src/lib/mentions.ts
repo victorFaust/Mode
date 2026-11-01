@@ -46,6 +46,19 @@ export function renderableMarkdown(markdown: string): string {
     .join("");
 }
 
+/** One line of plain text for previews: mentions become names and Markdown markers are dropped. */
+export function previewText(markdown: string, users: Record<string, User>, max = 140): string {
+  const text = toEditableText(markdown, users).text
+    .replace(/```[\s\S]*?```/g, " [code] ")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/^\s*(?:>|#+|[-*+]|\d+\.)\s+/gm, "")
+    .replace(/(?<!\\)(?:\*\*|__|~~|[*_`])/g, "")
+    .replace(/\\([\\`*_{}[\]()#+\-.!|<>~@])/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
 /** Finds an "@query" being typed just before the caret. */
 export function activeMentionQuery(text: string, caret: number): { start: number; query: string } | null {
   const before = text.slice(0, caret);

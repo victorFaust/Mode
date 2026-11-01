@@ -115,7 +115,8 @@ public static class SearchEndpoints
             .Select(m => new
             {
                 m.Id, m.ChannelId, m.ConversationId, m.ParentMessageId, m.Sequence, m.AuthorUserId, m.CreatedAt,
-                Headline = EF.Functions.WebSearchToTsQuery("english", q).GetResultHeadline(m.BodyMarkdown, HeadlineOptions),
+                Headline = EF.Functions.WebSearchToTsQuery("english", q)
+                    .GetResultHeadline((m.BodyMarkdown + "\n" + (m.ForwardedBodyMarkdown ?? "")).Trim(), HeadlineOptions),
             })
             .ToListAsync(ct);
         return rows.Select(r => new MessageRow(r.Id, Room(r.ChannelId, r.ConversationId), r.ParentMessageId, r.Sequence, r.AuthorUserId,
