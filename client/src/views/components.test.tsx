@@ -1,9 +1,10 @@
-import { act, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test } from "vitest";
 import { CommandBar } from "../components/CommandBar";
 import { ConnectionBanner } from "../components/ConnectionBanner";
 import type { Channel, Workspace } from "../api/client";
+import { rovingKeyDown } from "../lib/roving";
 import { renderMode } from "../test/harness";
 import { ChannelsList } from "./ChannelsList";
 import { MessageBody } from "./MessageBody";
@@ -44,6 +45,19 @@ describe("channel list", () => {
     expect(screen.getByRole("button", { name: "Deals" })).toHaveFocus();
     await user.keyboard("{Enter}");
     expect(store.getState().room).toEqual({ type: "Channel", id: "c2" });
+  });
+
+  test("arrow keys inside a text field are left to the field", () => {
+    render(
+      <div onKeyDown={rovingKeyDown}>
+        <div data-roving tabIndex={-1}><input aria-label="field" /></div>
+        <div data-roving tabIndex={-1}>second</div>
+      </div>,
+    );
+    const field = screen.getByRole("textbox", { name: "field" });
+    field.focus();
+    fireEvent.keyDown(field, { key: "ArrowDown" });
+    expect(field).toHaveFocus();
   });
 });
 

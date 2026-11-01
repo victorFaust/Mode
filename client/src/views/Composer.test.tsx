@@ -1,68 +1,108 @@
-import { act, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { act, screen, waitFor } from "@testing-library/react";
+import {
+  $createParagraphNode, $createTextNode, $getRoot, createEditor, FORMAT_TEXT_COMMAND, KEY_ENTER_COMMAND, type LexicalEditor,
+} from "lexical";
 import { describe, expect, test } from "vitest";
-import { ada, bola, chidi, message, renderMode, reply } from "../test/harness";
+import { $exportMessage, $importMessage, editorNodes, messageTransformers } from "../editor/markdown";
+import { $isMentionNode } from "../editor/MentionNode";
+import { ada, bola, message, renderMode, reply } from "../test/harness";
 import { Composer } from "./Composer";
 
-const room = { type: "Channel" as const, id: "c-general" };
+const room = { type: "Conversation" as const, id: "k-bola" };
+const transformers = messageTransformers((id) => (id === "u-bola" ? "Bola Adeyemi" : undefined));
 
-function setup() {
-  localStorage.clear();
-  const result = renderMode(<Composer room={room} members={[ada, bola]} allowChannelMention placeholder="Message #General" />);
-  result.api.POST.mockImplementation(((_: string, init: { body: { id: string; bodyMarkdown: string } }) =>
-    reply(message({ id: init.body.id, sequence: 1, author: ada, bodyMarkdown: init.body.bodyMarkdown }), 201)) as never);
-  result.api.GET.mockImplementation(() => reply([chidi]) as never);
-  return result;
+function headless(): LexicalEditor {
+  return createEditor({ nodes: editorNodes, onError: (e) => { throw e; } });
 }
 
+describe("message Markdown", () => {
+  test("round-trips formatting, lists, code and mentions", () => {
+    const editor = headless();
+    const source = "Hi @{u-bola}, **bold** *italic* `code` ~~gone~~\n\n- one\n- two\n\n```\nconst x = 1;\n```";
+    editor.update(() => $importMessage(source, transformers), { discrete: true });
+
+    const { markdown, mention } = editor.getEditorState().read(() => ({
+      markdown: $exportMessage(transformers),
+      mention: $getRoot().getAllTextNodes().find($isMentionNode)?.getTextContent(),
+    }));
+    expect(mention).toBe("@Bola Adeyemi");
+    expect(markdown).toBe(source);
+  });
+
+  test("shows escaped HTML from the server as plain characters", () => {
+    const editor = headless();
+    editor.update(() => $importMessage("a &lt;b> c", transformers), { discrete: true });
+    expect(editor.getEditorState().read(() => $getRoot().getTextContent())).toBe("a <b> c");
+  });
+});
+
+function setup(draft?: string) {
+  localStorage.clear();
+  if (draft) localStorage.setItem("mode.draft.u-ada.Conversation:k-bola", draft);
+  const result = renderMode(<Composer room={room} members={[ada, bola]} allowChannelMention={false} placeholder="Message Bola Adeyemi" />);
+  result.api.POST.mockImplementation(((_: string, init: { body: { id: string; bodyMarkdown: string } }) =>
+    reply(message({ id: init.body.id, sequence: 1, author: ada, room, bodyMarkdown: init.body.bodyMarkdown }), 201)) as never);
+  const box = screen.getByRole("textbox", { name: "Message Bola Adeyemi" });
+  const editor = (box as HTMLElement & { __lexicalEditor: LexicalEditor }).__lexicalEditor;
+  return { ...result, box, editor };
+}
+
+function typeText(editor: LexicalEditor, text: string) {
+  act(() => editor.update(() => {
+    const paragraph = $createParagraphNode();
+    const node = $createTextNode(text);
+    paragraph.append(node);
+    $getRoot().clear().append(paragraph);
+    node.select(text.length, text.length);
+  }, { discrete: true }));
+}
+
+const enter = (editor: LexicalEditor, shiftKey = false) =>
+  act(async () => { editor.dispatchCommand(KEY_ENTER_COMMAND, new KeyboardEvent("keydown", { key: "Enter", shiftKey })); });
+
+const sentBodies = (api: ReturnType<typeof setup>["api"]) =>
+  (api.POST.mock.calls as unknown as [string, { body: { bodyMarkdown: string } }][]).map(([, init]) => init.body.bodyMarkdown);
+
 describe("Composer", () => {
-  test("suggests room members first and sends picked mentions as tokens", async () => {
-    const user = userEvent.setup();
-    const { api } = setup();
-    const box = screen.getByRole("textbox", { name: "Message #General" });
+  test("Enter sends the formatted message as Markdown and clears the box", async () => {
+    const { api, editor } = setup();
+    typeText(editor, "ship it");
+    act(() => editor.update(() => $getRoot().getAllTextNodes()[0].select(0, "ship it".length), { discrete: true }));
+    act(() => { editor.dispatchCommand(FORMAT_TEXT_COMMAND, "bold"); });
+    await enter(editor);
 
-    await user.type(box, "thanks @bo");
-    const options = await screen.findAllByRole("option");
-    expect(options[0]).toHaveTextContent("Bola Adeyemi");
-    await user.keyboard("{Enter}");
-    expect(box).toHaveValue("thanks @Bola Adeyemi ");
-
-    await user.keyboard("{Enter}");
-    const body = (api.POST.mock.calls[0] as unknown as [string, { body: { bodyMarkdown: string } }])[1].body;
-    expect(body.bodyMarkdown).toBe("thanks @{u-bola}");
-    expect(box).toHaveValue("");
+    await waitFor(() => expect(sentBodies(api)).toEqual(["**ship it**"]));
+    expect(editor.getEditorState().read(() => $getRoot().getTextContent())).toBe("");
   });
 
-  test("Shift+Enter adds a line and Ctrl+B wraps the selection in bold", async () => {
-    const user = userEvent.setup();
-    const { api } = setup();
-    const box = screen.getByRole("textbox", { name: "Message #General" });
-
-    await user.type(box, "first{Shift>}{Enter}{/Shift}second");
-    expect(box).toHaveValue("first\nsecond");
+  test("Shift+Enter does not send", async () => {
+    const { api, editor } = setup();
+    typeText(editor, "first line");
+    await enter(editor, true);
     expect(api.POST).not.toHaveBeenCalled();
-
-    await user.clear(box);
-    await user.type(box, "important");
-    (box as HTMLTextAreaElement).setSelectionRange(0, 9);
-    await user.keyboard("{Control>}b{/Control}");
-    expect(box).toHaveValue("**important**");
   });
 
-  test("keeps an unsent draft per room", async () => {
-    const user = userEvent.setup();
+  test("@ suggests people in the chat and sends the mention as a token", async () => {
+    const { api, editor } = setup();
+    typeText(editor, "thanks @bo");
+
+    const option = await screen.findByRole("option", { name: /Bola Adeyemi/ });
+    expect(option).toHaveAttribute("aria-selected", "true");
+    await enter(editor);
+    await waitFor(() => expect(editor.getEditorState().read(() => $getRoot().getTextContent())).toBe("thanks @Bola Adeyemi "));
+
+    await enter(editor);
+    await waitFor(() => expect(sentBodies(api)).toEqual(["thanks @{u-bola}"]));
+  });
+
+  test("restores the saved draft and keeps Send disabled while empty", () => {
+    setup("half a **thought**");
+    expect(screen.getByRole("textbox", { name: "Message Bola Adeyemi" })).toHaveTextContent("half a thought");
+    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+  });
+
+  test("Send is disabled for an empty message", () => {
     setup();
-    await user.type(screen.getByRole("textbox", { name: "Message #General" }), "half a thought");
-    await act(() => new Promise((r) => setTimeout(r, 350)));
-
-    expect(localStorage.getItem("mode.draft.u-ada.Channel:c-general")).toBe("half a thought");
-  });
-
-  test("does not send while empty", async () => {
-    const user = userEvent.setup();
-    const { api } = setup();
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
-    await user.type(screen.getByRole("textbox", { name: "Message #General" }), "   {Enter}");
-    expect(api.POST).not.toHaveBeenCalled();
   });
 });

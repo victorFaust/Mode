@@ -2765,6 +2765,76 @@
         }
       }
     },
+    "/api/v1/messages/{messageId}/restore": {
+      "post": {
+        "tags": [
+          "Messages"
+        ],
+        "parameters": [
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/messages/{messageId}/reactions/{emoji}": {
       "put": {
         "tags": [
@@ -5292,6 +5362,7 @@
           "author",
           "bodyMarkdown",
           "createdAt",
+          "deletedByAuthor",
           "files",
           "id",
           "isDeleted",
@@ -5340,6 +5411,9 @@
             "nullable": true
           },
           "isDeleted": {
+            "type": "boolean"
+          },
+          "deletedByAuthor": {
             "type": "boolean"
           },
           "replyCount": {

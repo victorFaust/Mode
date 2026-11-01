@@ -38,6 +38,7 @@ export function message(overrides: Partial<Message> & { id: string; sequence: nu
     createdAt: "2026-11-01T10:00:00Z",
     editedAt: null,
     isDeleted: false,
+    deletedByAuthor: false,
     replyCount: 0,
     lastReplyAt: null,
     reactions: [],

@@ -72,6 +72,8 @@ export interface ModeState {
   commandBarOpen: boolean;
   /** Desktop: list column shown. Tablet: list overlay shown. */
   listOpen: boolean;
+  /** The message being edited in place, if any. */
+  editingMessageId: string | null;
 }
 
 export const initialState = (): ModeState => ({
@@ -99,6 +101,7 @@ export const initialState = (): ModeState => ({
   searchQuery: null,
   commandBarOpen: false,
   listOpen: true,
+  editingMessageId: null,
 });
 
 export const createModeStore = (initial?: Partial<ModeState>) =>

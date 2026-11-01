@@ -82,10 +82,11 @@ export function applyReactions(state: ModeState, room: RoomRef, messageId: strin
   };
 }
 
-export function applyDeleted(state: ModeState, room: RoomRef, messageId: string, sequence: number) {
+export function applyDeleted(state: ModeState, room: RoomRef, messageId: string, sequence: number, byAuthor = false) {
   return {
     ...updateMessage(state, room, messageId, (m) => ({
-      ...m, isDeleted: true, bodyMarkdown: "", files: [], mentions: [], updatedSequence: sequence,
+      ...m, isDeleted: true, deletedByAuthor: byAuthor || m.deletedByAuthor, bodyMarkdown: "", files: [], mentions: [], reactions: [],
+      updatedSequence: Math.max(m.updatedSequence, sequence),
     })),
     roomSequence: { ...state.roomSequence, [roomKey(room)]: Math.max(state.roomSequence[roomKey(room)] ?? 0, sequence) },
   };

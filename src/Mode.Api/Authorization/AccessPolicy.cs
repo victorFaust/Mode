@@ -107,14 +107,14 @@ public sealed class AccessPolicy(ModeDbContext db)
     {
         var message = await db.Messages
             .Where(m => m.Id == messageId)
-            .Select(m => new { m.ChannelId, m.ConversationId, m.AuthorUserId, Deleted = m.DeletedAt != null })
+            .Select(m => new { m.ChannelId, m.ConversationId, m.AuthorUserId, Deleted = m.DeletedAt != null, DeletedByAuthor = m.DeletedByUserId == m.AuthorUserId })
             .SingleOrDefaultAsync(ct);
         if (message is null) return Permission.None;
 
         var room = message.ChannelId is { } channelId
             ? await ForChannelAsync(user, channelId, ct)
             : await ForConversationAsync(user, message.ConversationId!.Value, ct);
-        return MessagePermissions(room, message.ChannelId is not null, message.AuthorUserId == user.Id, message.Deleted);
+        return MessagePermissions(room, message.ChannelId is not null, message.AuthorUserId == user.Id, message.Deleted, message.DeletedByAuthor);
     }
 
     public async Task<Permission> ForFileAsync(CurrentUser user, Guid fileId, CancellationToken ct)
@@ -251,7 +251,8 @@ public sealed class AccessPolicy(ModeDbContext db)
         return permission;
     }
 
-    internal static Permission MessagePermissions(Permission room, bool inChannel, bool isAuthor, bool deleted)
+    /// <summary>Authors may undo deleting their own message; a message removed by an owner stays removed.</summary>
+    internal static Permission MessagePermissions(Permission room, bool inChannel, bool isAuthor, bool deleted, bool deletedByAuthor = false)
     {
         if (!room.Has(Permission.Read)) return Permission.None;
 
@@ -259,6 +260,7 @@ public sealed class AccessPolicy(ModeDbContext db)
         if (room.Has(Permission.Post)) permission |= Permission.Post;
         if (!deleted && isAuthor && room.Has(Permission.Post)) permission |= Permission.Edit | Permission.Delete;
         if (!deleted && inChannel && room.Has(Permission.Manage)) permission |= Permission.Delete;
+        if (deleted && isAuthor && deletedByAuthor && room.Has(Permission.Post)) permission |= Permission.Restore;
         return permission;
     }
 

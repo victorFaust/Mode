@@ -277,6 +277,33 @@ public sealed class MessagingApiTests(ApiFixture api)
     }
 
     [Fact]
+    public async Task Authors_can_undo_their_own_delete_but_not_a_removal_by_an_owner()
+    {
+        using var team = await CreateTeamAsync();
+        var mine = (await SendOkAsync(team.Member, team.GeneralId, "oops @{" + team.Member2Id + "}")).GetProperty("id").GetGuid();
+        var removed = (await SendOkAsync(team.Member, team.GeneralId, "off topic")).GetProperty("id").GetGuid();
+
+        await team.Member.DeleteAsync($"/api/v1/messages/{mine}");
+        var deleted = await team.Member.GetJsonAsync($"/api/v1/messages/{mine}");
+        Assert.True(deleted.GetProperty("deletedByAuthor").GetBoolean());
+        Assert.Equal(HttpStatusCode.Forbidden, (await team.Member2.PostAsync($"/api/v1/messages/{mine}/restore", null)).StatusCode);
+
+        var restored = await team.Member.PostJsonOkAsync($"/api/v1/messages/{mine}/restore", new { });
+        Assert.False(restored.GetProperty("isDeleted").GetBoolean());
+        Assert.Equal("oops @{" + team.Member2Id + "}", restored.GetProperty("bodyMarkdown").GetString());
+        Assert.Equal(1, restored.GetProperty("mentions").GetArrayLength());
+        Assert.True(restored.GetProperty("updatedSequence").GetInt64() > deleted.GetProperty("updatedSequence").GetInt64());
+
+        await team.Owner.DeleteAsync($"/api/v1/messages/{removed}");
+        Assert.False((await team.Member.GetJsonAsync($"/api/v1/messages/{removed}")).GetProperty("deletedByAuthor").GetBoolean());
+        Assert.Equal(HttpStatusCode.Forbidden, (await team.Member.PostAsync($"/api/v1/messages/{removed}/restore", null)).StatusCode);
+
+        await using var db = api.CreateDbContext();
+        Assert.Equal([MessageChangeKind.Delete, MessageChangeKind.Restore],
+            await db.MessageEdits.Where(e => e.MessageId == mine).OrderBy(e => e.ChangedAt).Select(e => e.Kind).ToListAsync());
+    }
+
+    [Fact]
     public async Task People_who_cannot_read_the_room_get_not_found()
     {
         using var team = await CreateTeamAsync();

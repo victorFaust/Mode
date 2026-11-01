@@ -6,7 +6,7 @@ public enum ChannelType { Standard, Private }
 
 public enum ConversationType { Direct, Group }
 
-public enum MessageChangeKind { Edit, Delete }
+public enum MessageChangeKind { Edit, Delete, Restore }
 
 public enum MentionKind { User, Channel, Workspace }
 

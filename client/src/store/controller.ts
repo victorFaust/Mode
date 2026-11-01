@@ -454,6 +454,7 @@ export class ModeController {
       bodyMarkdown: send.bodyMarkdown,
       createdAt: new Date().toISOString(),
       isDeleted: false,
+      deletedByAuthor: false,
       replyCount: 0,
       reactions: [],
       mentions: [],
@@ -505,11 +506,30 @@ export class ModeController {
       params: { path: { messageId: message.id } }, body: { bodyMarkdown: toWireMarkdown(text, picked) },
     }));
     this.set((s) => applyMessage(s, saved));
+    this.set({ editingMessageId: null });
   }
 
   async remove(message: Message): Promise<void> {
     await ok(this.api.DELETE("/api/v1/messages/{messageId}", { params: { path: { messageId: message.id } } }));
-    this.set((s) => applyDeleted(s, message.room, message.id, message.updatedSequence));
+    this.set((s) => applyDeleted(s, message.room, message.id, message.updatedSequence, message.author.id === s.me?.id));
+  }
+
+  /** Undo for your own delete. */
+  async restore(message: Message): Promise<void> {
+    const restored = await ok(this.api.POST("/api/v1/messages/{messageId}/restore", { params: { path: { messageId: message.id } } }));
+    this.set((s) => applyMessage(s, restored));
+  }
+
+  startEdit(messageId: string | null): void {
+    this.set({ editingMessageId: messageId });
+  }
+
+  /** Up arrow in an empty composer edits your most recent message there, as in Teams. */
+  editLastOwn(room: RoomRef, parentMessageId: string | null): void {
+    const s = this.state;
+    const items = parentMessageId ? s.threads[parentMessageId]?.items ?? [] : roomOf(s, room).items;
+    const last = [...items].reverse().find((m) => m.author.id === s.me?.id && !m.isDeleted && !m.pending);
+    if (last) this.startEdit(last.id);
   }
 
   async toggleReaction(message: Message, emoji: string): Promise<void> {

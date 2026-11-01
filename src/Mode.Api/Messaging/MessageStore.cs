@@ -94,7 +94,7 @@ public sealed class MessageStore(ModeDbContext db, IUserDirectory directory, Fil
                 m.Id, RoomRef.Of(m), m.Sequence, m.UpdatedSequence, m.ParentMessageId,
                 WorkspaceEndpoints.ToUserDto(authors, m.AuthorUserId),
                 deleted ? "" : m.BodyMarkdown,
-                m.CreatedAt, m.EditedAt, deleted, m.ReplyCount, m.LastReplyAt,
+                m.CreatedAt, m.EditedAt, deleted, deleted && m.DeletedByUserId == m.AuthorUserId, m.ReplyCount, m.LastReplyAt,
                 deleted ? [] : Summarize(m.Reactions),
                 deleted ? [] : m.Mentions.Select(x => new MentionDto(x.Kind, x.TargetUserId)).ToList(),
                 attachments.GetValueOrDefault(m.Id) ?? []);
