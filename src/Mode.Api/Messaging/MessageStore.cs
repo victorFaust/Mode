@@ -41,7 +41,19 @@ public sealed class MessageStore(ModeDbContext db, IUserDirectory directory, Fil
 
         var hasMore = messages.Count > limit;
         var page = messages.Take(limit).ToList();
-        return new MessagePage(await ToDtosAsync(page, ct), hasMore ? page[^1].Sequence : null);
+        return new MessagePage(await ToDtosAsync(page, ct), hasMore ? page[^1].Sequence : null, null);
+    }
+
+    /// <summary>Oldest first from just after <paramref name="after"/>; used to open a room at the first unread message.</summary>
+    public async Task<MessagePage> TopLevelPageAfterAsync(RoomRef room, long after, int limit, CancellationToken ct)
+    {
+        limit = Math.Clamp(limit, 1, MaxPageSize);
+        var query = InRoom(room).Where(m => m.ParentMessageId == null && m.Sequence > after);
+        var messages = await WithDetails(query).OrderBy(m => m.Sequence).Take(limit + 1).ToListAsync(ct);
+
+        var hasMore = messages.Count > limit;
+        var page = messages.Take(limit).ToList();
+        return new MessagePage(await ToDtosAsync(page, ct), page.Count > 0 ? page[0].Sequence : null, hasMore ? page[^1].Sequence : null);
     }
 
     public async Task<IReadOnlyList<MessageDto>> RepliesAsync(Guid parentId, long? after, int limit, CancellationToken ct)

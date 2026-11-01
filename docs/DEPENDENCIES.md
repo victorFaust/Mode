@@ -15,6 +15,8 @@ All dependencies are open source and free for internal use. Licences were taken 
 | Microsoft.IdentityModel.JsonWebTokens | 8.23.0 | MIT | mock issuer |
 | Microsoft.AspNetCore.Authentication.JwtBearer | 10.0.14 | MIT | host token validation |
 | Markdig | 1.5.1 | BSD-2-Clause | parsing message Markdown for sanitizing and mentions |
+| Lib.Net.Http.WebPush | 3.3.1 | MIT | Web Push (VAPID, payload encryption) |
+| MailKit | 4.18.2 | MIT | SMTP for email digests |
 | Testcontainers.PostgreSql | 4.16.0 | MIT | tests: throwaway PostgreSQL (needs Docker on the build agent) |
 | Microsoft.AspNetCore.SignalR.Client | 10.0.14 | MIT | tests: realtime connection tests |
 | Serilog.AspNetCore | 10.0.0 | Apache 2.0 | structured logging |

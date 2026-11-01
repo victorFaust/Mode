@@ -16,4 +16,4 @@ public enum PreviewStatus { Pending, Ready, NotSupported, Failed }
 
 public enum JobStatus { Pending, Running, Done, Failed }
 
-public enum ActivityType { Mention, ChannelMention, Reply, Reaction, AddedToChannel, AddedToWorkspace }
+public enum ActivityType { Mention, ChannelMention, Reply, Reaction, AddedToChannel, AddedToWorkspace, ChatMessage }

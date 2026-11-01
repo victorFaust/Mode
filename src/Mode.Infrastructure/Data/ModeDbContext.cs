@@ -22,6 +22,7 @@ public sealed class ModeDbContext(DbContextOptions<ModeDbContext> options) : DbC
     public DbSet<UploadSession> UploadSessions => Set<UploadSession>();
     public DbSet<MessageAttachment> MessageAttachments => Set<MessageAttachment>();
     public DbSet<Job> Jobs => Set<Job>();
+    public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
     public DbSet<ActivityItem> ActivityItems => Set<ActivityItem>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 

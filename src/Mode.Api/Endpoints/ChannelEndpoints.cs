@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Mode.Api.Auditing;
 using Mode.Api.Auth;
 using Mode.Api.Authorization;
+using Mode.Api.Notifications;
 using Mode.Api.Realtime;
 using Mode.Domain.Directory;
 using Mode.Domain.Entities;
@@ -172,7 +173,7 @@ public static class ChannelEndpoints
 
     private static async Task<IResult> AddMember(
         Guid channelId, AddChannelMemberRequest body, CurrentUser user, ModeDbContext db, AccessPolicy policy,
-        IUserDirectory directory, IAuditLog audit, TimeProvider clock, CancellationToken ct)
+        IUserDirectory directory, IAuditLog audit, NotificationService notifications, TimeProvider clock, CancellationToken ct)
     {
         var permission = await policy.ForChannelAsync(user, channelId, ct);
         if (permission == Permission.None) return Problems.NotFound();
@@ -198,6 +199,11 @@ public static class ChannelEndpoints
         {
             return Problems.Conflict("User is already a member of this channel.");
         }
+        // After the membership is saved, so the notification's reader check sees the new member.
+        var activity = await notifications.PrepareAsync(
+            [new(targetId, ActivityType.AddedToChannel, user.Id, channel.WorkspaceId, channelId, null, null)], ct);
+        await db.SaveChangesAsync(ct);
+        await notifications.DeliverAsync(activity, ct);
 
         return TypedResults.Created($"/api/v1/channels/{channelId}/members/{targetId}", new { userId = targetId });
     }

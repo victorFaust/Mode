@@ -16,6 +16,9 @@ public class ActivityItem
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? ReadAt { get; set; }
     public DateTimeOffset ExpiresAt { get; set; }
+
+    /// <summary>Set once the item has been included in an email digest.</summary>
+    public DateTimeOffset? EmailedAt { get; set; }
 }
 
 /// <summary>Append-only. Holds ids as plain values (no foreign keys) so entries outlive what they describe.</summary>
@@ -40,7 +43,7 @@ public class UserSettings
     public DateTimeOffset UpdatedAt { get; set; }
 }
 
-/// <summary>Last-read position of a user in one channel or conversation.</summary>
+/// <summary>Per-user state for one channel or conversation: last-read position and mute.</summary>
 public class ReadMarker
 {
     public Guid Id { get; set; }
@@ -48,5 +51,18 @@ public class ReadMarker
     public Guid? ChannelId { get; set; }
     public Guid? ConversationId { get; set; }
     public long LastReadSequence { get; set; }
+    public bool IsMuted { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
+}
+
+/// <summary>A browser registered for Web Push (RFC 8030/8291).</summary>
+public class PushSubscription
+{
+    public Guid Id { get; set; }
+    public required string UserId { get; set; }
+    public required string Endpoint { get; set; }
+    public required string P256dh { get; set; }
+    public required string Auth { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? LastUsedAt { get; set; }
 }

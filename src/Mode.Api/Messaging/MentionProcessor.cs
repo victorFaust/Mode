@@ -1,21 +1,18 @@
-using Microsoft.EntityFrameworkCore;
 using Mode.Api.Authorization;
+using Mode.Api.Notifications;
 using Mode.Domain.Directory;
 using Mode.Domain.Entities;
-using Mode.Infrastructure.Data;
 
 namespace Mode.Api.Messaging;
 
-/// <summary>Stores a message's mentions and creates activity items for mentioned people who can read the room.</summary>
-public sealed class MentionProcessor(ModeDbContext db, AccessPolicy policy, IUserDirectory directory, TimeProvider clock)
+/// <summary>Stores a message's mentions and says who should be notified about them.</summary>
+public sealed class MentionProcessor(AccessPolicy policy, IUserDirectory directory)
 {
-    public static readonly TimeSpan ActivityLifetime = TimeSpan.FromDays(30);
-
     /// <summary>
-    /// Replaces <paramref name="message"/>'s mentions (its Mentions collection must be loaded) and adds activity items
-    /// to the context. Users who were already notified about this message are not notified again.
+    /// Replaces <paramref name="message"/>'s mentions (its Mentions collection must be loaded) and returns notification
+    /// requests; <see cref="NotificationService"/> filters them to readers and drops people already notified.
     /// </summary>
-    public async Task<IReadOnlyList<ActivityItem>> ApplyAsync(Message message, RoomRef room, Guid? workspaceId, ParsedMentions parsed, CancellationToken ct)
+    public async Task<List<NotificationRequest>> ApplyAsync(Message message, RoomRef room, Guid? workspaceId, ParsedMentions parsed, CancellationToken ct)
     {
         message.Mentions.Clear();
 
@@ -34,40 +31,16 @@ public sealed class MentionProcessor(ModeDbContext db, AccessPolicy policy, IUse
         if (parsed.Workspace && room.Type == RoomType.Channel)
             message.Mentions.Add(new Mention { Kind = MentionKind.Workspace });
 
-        if (userIds.Count == 0 && !mentionsEveryone) return [];
+        var requests = userIds
+            .Select(id => Request(id, ActivityType.Mention))
+            .ToList();
 
         // In a channel, @workspace reaches only workspace members who can read this channel, same as @channel.
-        var readers = (await policy.ListReadersAsync(room, ct)).ToHashSet();
-        var alreadyNotified = (await db.ActivityItems.Where(a => a.MessageId == message.Id).Select(a => a.UserId).ToListAsync(ct)).ToHashSet();
-
-        var recipients = new Dictionary<string, ActivityType>();
-        foreach (var id in userIds.Where(readers.Contains))
-            recipients[id] = ActivityType.Mention;
         if (mentionsEveryone)
-            foreach (var id in readers)
-                recipients.TryAdd(id, ActivityType.ChannelMention);
+            requests.AddRange((await policy.ListReadersAsync(room, ct)).Select(id => Request(id, ActivityType.ChannelMention)));
+        return requests;
 
-        var now = clock.GetUtcNow();
-        var items = recipients
-            .Where(r => r.Key != message.AuthorUserId && !alreadyNotified.Contains(r.Key))
-            .Select(r => new ActivityItem
-            {
-                Id = Guid.NewGuid(),
-                UserId = r.Key,
-                Type = r.Value,
-                ActorUserId = message.AuthorUserId,
-                WorkspaceId = workspaceId,
-                ChannelId = message.ChannelId,
-                ConversationId = message.ConversationId,
-                MessageId = message.Id,
-                CreatedAt = now,
-                ExpiresAt = now + ActivityLifetime,
-            })
-            .ToList();
-        db.ActivityItems.AddRange(items);
-        return items;
+        NotificationRequest Request(string recipient, ActivityType type) =>
+            new(recipient, type, message.AuthorUserId, workspaceId, message.ChannelId, message.ConversationId, message.Id);
     }
-
-    public static ActivityDto ToDto(ActivityItem item) =>
-        new(item.Id, item.Type, item.ActorUserId, item.WorkspaceId, item.ChannelId, item.ConversationId, item.MessageId, item.CreatedAt);
 }

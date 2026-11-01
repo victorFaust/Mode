@@ -15,6 +15,10 @@ public static class RealtimeEvents
     public const string ActivityCreated = "activityCreated";
     public const string RoomAccessRevoked = "roomAccessRevoked";
     public const string FileUpdated = "fileUpdated";
+    public const string Notification = "notification";
+    public const string PresenceChanged = "presenceChanged";
+    public const string ReadMarkerChanged = "readMarkerChanged";
+    public const string ActivityRead = "activityRead";
 
     public static string UserGroup(string userId) => "user:" + userId;
 }
@@ -27,7 +31,11 @@ public sealed record ReactionChangedEvent(RoomRef Room, long Sequence, Guid Mess
 
 public sealed record TypingEvent(RoomRef Room, string UserId, Guid? ParentMessageId);
 
-public sealed record ActivityEvent(ActivityDto Item);
+public sealed record ActivityEvent(ActivityDto Item, int UnreadCount);
+
+public sealed record ActivityReadEvent(IReadOnlyList<Guid> ActivityIds, int UnreadCount);
+
+public sealed record ReadMarkerChangedEvent(RoomRef Room, long LastReadSequence);
 
 public sealed record RoomAccessRevokedEvent(RoomRef Room);
 
@@ -51,9 +59,18 @@ public sealed class RealtimeNotifier(IHubContext<ModeHub> hub)
     public Task FileUpdatedAsync(FileDto file) =>
         hub.Clients.Group(file.Room.GroupName).SendAsync(RealtimeEvents.FileUpdated, new FileUpdatedEvent(file.Room, file));
 
-    public async Task ActivityCreatedAsync(IEnumerable<(string UserId, ActivityDto Item)> items)
-    {
-        foreach (var (userId, item) in items)
-            await hub.Clients.Group(RealtimeEvents.UserGroup(userId)).SendAsync(RealtimeEvents.ActivityCreated, new ActivityEvent(item));
-    }
+    public Task ActivityCreatedAsync(string userId, ActivityDto item, int unreadCount) =>
+        User(userId).SendAsync(RealtimeEvents.ActivityCreated, new ActivityEvent(item, unreadCount));
+
+    /// <summary>Keeps the badge in step across a user's tabs and devices.</summary>
+    public Task ActivityReadAsync(string userId, IReadOnlyList<Guid> activityIds, int unreadCount) =>
+        User(userId).SendAsync(RealtimeEvents.ActivityRead, new ActivityReadEvent(activityIds, unreadCount));
+
+    public Task NotificationAsync(string userId, Notifications.NotificationBanner banner) =>
+        User(userId).SendAsync(RealtimeEvents.Notification, banner);
+
+    public Task ReadMarkerChangedAsync(string userId, RoomRef room, long lastReadSequence) =>
+        User(userId).SendAsync(RealtimeEvents.ReadMarkerChanged, new ReadMarkerChangedEvent(room, lastReadSequence));
+
+    private IClientProxy User(string userId) => hub.Clients.Group(RealtimeEvents.UserGroup(userId));
 }

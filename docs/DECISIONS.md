@@ -96,7 +96,7 @@ The stored Markdown is the user's text with raw HTML spans escaped (`<` becomes 
 
 ## D24. Mention activity is addressed by stored roles
 
-Activity items go to mentioned people who can read the room according to their stored workspace role. Whether someone is a host-flagged guest is only known from their own token, so such a user could receive an activity item for a standard channel they cannot open. The activity feed (Prompt 5) re-checks access when listing items, so nothing leaks.
+Activity items go to mentioned people who can read the room according to their stored workspace role. Whether someone is a host-flagged guest is only known from their own token, so such a user could receive an activity item for a standard channel they cannot open. The activity feed re-checks access with the caller's token when listing items, so nothing leaks (see D32).
 
 ## D25. Group chat membership
 
@@ -139,3 +139,30 @@ Rendering Word, Excel and PowerPoint pages needs LibreOffice, a large extra serv
 ## D31. Signed link tokens are redacted from request logs
 
 Paths under `/api/v1/files/content/` and `/internal/files/` are logged as `[redacted]`.
+
+## D32. One notification path decides feed, banner, push and email
+
+`NotificationService` handles every notification (mentions, replies, chat messages, reactions, "added to"):
+- **One item per person per message**, keeping the most specific reason: Mention > @channel > Reply > Reaction > Chat message. Someone already notified about a message is not notified again, so an edit or a second reaction does not re-notify.
+- **Readers only:** recipients who cannot read the room are dropped. The feed, unread counts and search also filter by the caller's readable rooms at read time. When access is lost, that user's unread items from the room are marked read, so the badge stays truthful.
+- **Categories** (Mentions, Chats, Channels), each set to banner and feed, feed only, or off. The defaults are: mentions and chats banner and feed, channels feed only.
+- **Muted room:** silent except for a direct @mention of the person.
+- **Do not disturb:** the feed still fills, but no banner and no push. DND holds while the person is offline too.
+
+## D33. Web Push with VAPID, sent only to people with no Mode tab open
+
+Web Push is free; the keys are generated locally by `scripts/dev-setup.ps1`. The server needs outbound HTTPS to the browser vendors' push services (Google FCM, Mozilla, Microsoft, Apple). A push is a job that runs right after the change. It is skipped if the person has a live connection (they already got the in-app banner), has read the item, or is on DND.
+
+Subscription endpoints come from browsers, so they are accepted only for those push services over HTTPS on the default port (`Push:AllowedHosts`). This stops a subscription from making the server call internal addresses. Redirects are not followed. Endpoints that answer 404 or 410 are deleted.
+
+## D34. Email digests over SMTP, off by default
+
+People opt in to an hourly or daily digest of unread activity. Items get 15 minutes to be seen in Mode first. Each item is emailed at most once (`ActivityItem.EmailedAt`), and content is HTML-encoded. Development uses Gmail SMTP (smtp.gmail.com:587, STARTTLS) with an App Password kept in user secrets. Gmail allows about 500 messages a day, so production should use the bank's own SMTP relay through the same settings.
+
+## D35. Presence is in memory
+
+Status is derived from live connections and client heartbeats: Available, then Away after 5 minutes without activity, then Offline when the last connection closes. A chosen status (Busy, DND, Away) and message last until changed or until the API restarts. Presence is visible only to yourself and people you share a workspace or chat with. Running several API instances would need a shared store (for example Redis), which this single-server design does not have.
+
+## D36. Search is PostgreSQL full-text search
+
+Search uses english stemming and web-style syntax (quotes, `OR`, `-word`). Results are limited to readable rooms before ranking, so nothing hidden affects counts or order. File results cover current, clean, undeleted versions only. Snippets are returned as plain text with highlight offsets, never as HTML. People search follows the directory rule: none for guests.

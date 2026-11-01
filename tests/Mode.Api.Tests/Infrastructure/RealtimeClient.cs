@@ -12,6 +12,7 @@ internal sealed class RealtimeClient : IAsyncDisposable
     [
         RealtimeEvents.MessageCreated, RealtimeEvents.MessageEdited, RealtimeEvents.MessageDeleted, RealtimeEvents.ReactionChanged,
         RealtimeEvents.Typing, RealtimeEvents.ActivityCreated, RealtimeEvents.RoomAccessRevoked, RealtimeEvents.FileUpdated,
+        RealtimeEvents.Notification, RealtimeEvents.PresenceChanged, RealtimeEvents.ReadMarkerChanged, RealtimeEvents.ActivityRead,
     ];
 
     private readonly HubConnection _connection;
@@ -50,6 +51,11 @@ internal sealed class RealtimeClient : IAsyncDisposable
 
     public Task TypingAsync(string roomType, Guid roomId) =>
         _connection.InvokeAsync("Typing", new { type = roomType, id = roomId }, (Guid?)null);
+
+    public Task<JsonElement> SubscribePresenceAsync(params string[] userIds) =>
+        _connection.InvokeAsync<JsonElement>("SubscribePresence", userIds);
+
+    public Task HeartbeatAsync(bool active) => _connection.InvokeAsync("Heartbeat", active);
 
     public IReadOnlyList<JsonElement> Events(string name)
     {
