@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Mode.Api.Files.Processing;
 using Mode.Api.Files.Scanning;
 using Mode.Api.Jobs;
+using Mode.Api.Notifications;
 using Mode.Domain.Directory;
 using Mode.Infrastructure.Data;
 using Testcontainers.PostgreSql;
@@ -25,6 +26,8 @@ public sealed class ApiFixture : IAsyncLifetime
 
     internal ApiFactory Factory { get; private set; } = null!;
     internal FakePreviewProcessor Processor { get; } = new();
+    internal FakePushSender Push { get; } = new();
+    internal FakeEmailSender Email { get; } = new();
 
     public async Task InitializeAsync()
     {
@@ -32,7 +35,7 @@ public sealed class ApiFixture : IAsyncLifetime
         await using (var db = CreateDbContext())
             await db.Database.MigrateAsync();
 
-        Factory = new ApiFactory(_postgres.GetConnectionString(), _directory, _storagePath, Processor);
+        Factory = new ApiFactory(_postgres.GetConnectionString(), _directory, _storagePath, Processor, Push, Email);
         Factory.CreateClient().Dispose();
         Processor.ClientFactory = () => Factory.CreateClient();
     }
@@ -93,10 +96,14 @@ public sealed class ApiCollection : ICollectionFixture<ApiFixture>
     public const string Name = "api";
 }
 
-internal sealed class ApiFactory(string connectionString, IUserDirectory directory, string storagePath, FakePreviewProcessor processor)
+internal sealed class ApiFactory(
+    string connectionString, IUserDirectory directory, string storagePath, FakePreviewProcessor processor, FakePushSender push, FakeEmailSender email)
     : WebApplicationFactory<Program>
 {
     public static readonly string LinkSigningKey = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+
+    /// <summary>Presence turns away after this many seconds without activity in tests.</summary>
+    public const int AwayAfterSeconds = 2;
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -112,8 +119,20 @@ internal sealed class ApiFactory(string connectionString, IUserDirectory directo
         builder.UseSetting("Files:MaxSizeMb", "1");
         builder.UseSetting("Files:ProcessorCallbackBaseUrl", "http://localhost");
         builder.UseSetting("Jobs:Enabled", "false");
+        builder.UseSetting("Presence:AwayAfterSeconds", AwayAfterSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        builder.UseSetting("Presence:SweepSeconds", "1");
+        // The fake sender never uses the keys; they only need to be present for push to count as configured.
+        builder.UseSetting("Push:Subject", "mailto:tests@test.example");
+        builder.UseSetting("Push:PublicKey", "test-public-key");
+        builder.UseSetting("Push:PrivateKey", "test-private-key");
+        builder.UseSetting("Email:Enabled", "true");
+        builder.UseSetting("Email:FromAddress", "mode@test.example");
         builder.ConfigureTestServices(services =>
         {
+            services.RemoveAll<IPushSender>();
+            services.AddSingleton<IPushSender>(push);
+            services.RemoveAll<IEmailSender>();
+            services.AddSingleton<IEmailSender>(email);
             services.RemoveAll<IUserDirectory>();
             services.AddSingleton(directory);
             services.RemoveAll<IVirusScanner>();

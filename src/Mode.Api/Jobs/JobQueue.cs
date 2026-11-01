@@ -16,6 +16,7 @@ public sealed class JobOptions
     public int Workers { get; set; } = 2;
     public int PollSeconds { get; set; } = 2;
     public int LockMinutes { get; set; } = 10;
+    /// <summary>How often recurring jobs (file purge, activity expiry, email digest) are queued; capped at 60.</summary>
     public int PurgeIntervalMinutes { get; set; } = 60;
 }
 
@@ -137,24 +138,30 @@ public sealed class JobWorker(JobRunner runner, IServiceScopeFactory scopes, IOp
         }
     }
 
+    private static readonly string[] Recurring = [JobTypes.FilesPurge, JobTypes.ActivityExpire, JobTypes.EmailDigest];
+
+    /// <summary>Queues each recurring job unless one is already waiting. At least hourly, so daily digests hit their hour.</summary>
     private async Task ScheduleAsync(JobOptions settings, CancellationToken ct)
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(settings.PurgeIntervalMinutes));
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(Math.Clamp(settings.PurgeIntervalMinutes, 1, 60)));
         do
         {
             try
             {
                 await using var scope = scopes.CreateAsyncScope();
                 var db = scope.ServiceProvider.GetRequiredService<ModeDbContext>();
-                if (!await db.Jobs.AnyAsync(j => j.Type == JobTypes.FilesPurge && (j.Status == JobStatus.Pending || j.Status == JobStatus.Running), ct))
-                {
-                    scope.ServiceProvider.GetRequiredService<JobQueue>().Enqueue(JobTypes.FilesPurge, new { });
-                    await db.SaveChangesAsync(ct);
-                }
+                var queue = scope.ServiceProvider.GetRequiredService<JobQueue>();
+                var waiting = await db.Jobs
+                    .Where(j => Recurring.Contains(j.Type) && (j.Status == JobStatus.Pending || j.Status == JobStatus.Running))
+                    .Select(j => j.Type)
+                    .ToListAsync(ct);
+                foreach (var type in Recurring.Except(waiting))
+                    queue.Enqueue(type, new { });
+                await db.SaveChangesAsync(ct);
             }
             catch (Exception ex) when (!ct.IsCancellationRequested)
             {
-                logger.LogError(ex, "Scheduling the file purge failed");
+                logger.LogError(ex, "Scheduling recurring jobs failed");
             }
         } while (await timer.WaitForNextTickAsync(ct).AsTask().ContinueWith(t => !t.IsCanceled && t.Result, CancellationToken.None));
     }
@@ -165,4 +172,7 @@ public static class JobTypes
     public const string FileScan = "file.scan";
     public const string FilePreview = "file.preview";
     public const string FilesPurge = "files.purge";
+    public const string PushSend = "push.send";
+    public const string ActivityExpire = "activity.expire";
+    public const string EmailDigest = "email.digest";
 }

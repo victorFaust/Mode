@@ -3,12 +3,16 @@
 .SYNOPSIS
     One-time local setup: creates .env with random secrets, seeds the mock host users database
     on SQL Server, and stores the API's connection strings in dotnet user secrets.
+.PARAMETER PushSubject
+    Contact for browser push services (mailto: or https: URL). Push stays off until this is set.
 #>
 [CmdletBinding()]
 param(
     [string]$SqlServer = '.\MYDB',
     [ValidatePattern('^[A-Za-z_][A-Za-z0-9_]{0,127}$')]
-    [string]$HostDatabase = 'ModeHostMock'
+    [string]$HostDatabase = 'ModeHostMock',
+    [ValidatePattern('^(mailto:\S+@\S+|https://\S+)?$')]
+    [string]$PushSubject = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -47,6 +51,23 @@ foreach ($key in $secretKeys) {
     if ($index -lt 0) { $lines.Add("$key=$(New-SecretFor $key)") }
     elseif ($lines[$index] -eq "$key=change-me") { $lines[$index] = "$key=$(New-SecretFor $key)" }
 }
+
+function ConvertTo-Base64Url([byte[]]$Bytes) {
+    [Convert]::ToBase64String($Bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+}
+
+# Web Push (VAPID) key pair: P-256, public key as an uncompressed point, both base64url. Generated once, kept after.
+if (-not ($lines | Where-Object { $_ -match '^VAPID_PRIVATE_KEY=.+' })) {
+    $ecdsa = [System.Security.Cryptography.ECDsa]::Create([System.Security.Cryptography.ECCurve+NamedCurves]::nistP256)
+    try {
+        $ecKey = $ecdsa.ExportParameters($true)
+        $public = ConvertTo-Base64Url ([byte[]](@(4) + $ecKey.Q.X + $ecKey.Q.Y))
+        $private = ConvertTo-Base64Url $ecKey.D
+    } finally { $ecdsa.Dispose() }
+    $lines = [System.Collections.Generic.List[string]]($lines | Where-Object { $_ -notmatch '^VAPID_(PUBLIC|PRIVATE)_KEY=' })
+    $lines.Add("VAPID_PUBLIC_KEY=$public")
+    $lines.Add("VAPID_PRIVATE_KEY=$private")
+}
 Set-Content -Path $envFile -Value $lines -Encoding UTF8
 
 $settings = @{}
@@ -66,6 +87,10 @@ $directoryConnection = "Server=$SqlServer;Database=$HostDatabase;User Id=mode_re
 & dotnet user-secrets set 'UserDirectory:ConnectionString' $directoryConnection --project $apiProject | Out-Null
 & dotnet user-secrets set 'Files:LinkSigningKey' $settings.FILES_LINK_SIGNING_KEY --project $apiProject | Out-Null
 & dotnet user-secrets set 'Files:ProcessorKey' $settings.PROCESSOR_KEY --project $apiProject | Out-Null
+& dotnet user-secrets set 'Push:PublicKey' $settings.VAPID_PUBLIC_KEY --project $apiProject | Out-Null
+& dotnet user-secrets set 'Push:PrivateKey' $settings.VAPID_PRIVATE_KEY --project $apiProject | Out-Null
+if ($PushSubject) { & dotnet user-secrets set 'Push:Subject' $PushSubject --project $apiProject | Out-Null }
 if ($LASTEXITCODE -ne 0) { throw 'dotnet user-secrets failed.' }
 
-Write-Host 'Done. Stored ConnectionStrings:Mode and UserDirectory:ConnectionString in user secrets.'
+Write-Host 'Done. Stored connection strings, file keys and VAPID keys in user secrets.'
+if (-not $PushSubject) { Write-Host 'Browser push is off until you rerun with -PushSubject mailto:you@example.com.' }

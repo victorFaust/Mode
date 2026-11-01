@@ -43,6 +43,9 @@ namespace Mode.Infrastructure.Data.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTimeOffset?>("EmailedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -74,6 +77,10 @@ namespace Mode.Infrastructure.Data.Migrations
                     b.HasIndex("ExpiresAt");
 
                     b.HasIndex("MessageId");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("IX_ActivityItems_UserId_Unread")
+                        .HasFilter("\"ReadAt\" IS NULL");
 
                     b.HasIndex("WorkspaceId");
 
@@ -620,6 +627,48 @@ namespace Mode.Infrastructure.Data.Migrations
                     b.ToTable("MessageEdits");
                 });
 
+            modelBuilder.Entity("Mode.Domain.Entities.PushSubscription", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Auth")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Endpoint")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTimeOffset?>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("P256dh")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Endpoint")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("PushSubscriptions");
+                });
+
             modelBuilder.Entity("Mode.Domain.Entities.Reaction", b =>
                 {
                     b.Property<Guid>("MessageId")
@@ -652,6 +701,9 @@ namespace Mode.Infrastructure.Data.Migrations
 
                     b.Property<Guid?>("ConversationId")
                         .HasColumnType("uuid");
+
+                    b.Property<bool>("IsMuted")
+                        .HasColumnType("boolean");
 
                     b.Property<long>("LastReadSequence")
                         .HasColumnType("bigint");

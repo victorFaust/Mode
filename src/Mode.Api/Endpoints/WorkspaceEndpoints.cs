@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Mode.Api.Auditing;
 using Mode.Api.Auth;
 using Mode.Api.Authorization;
+using Mode.Api.Notifications;
 using Mode.Api.Realtime;
 using Mode.Domain.Directory;
 using Mode.Domain.Entities;
@@ -112,7 +113,7 @@ public static class WorkspaceEndpoints
 
     private static async Task<IResult> AddMember(
         Guid workspaceId, AddWorkspaceMemberRequest body, CurrentUser user, ModeDbContext db, AccessPolicy policy,
-        IUserDirectory directory, IAuditLog audit, TimeProvider clock, CancellationToken ct)
+        IUserDirectory directory, IAuditLog audit, NotificationService notifications, TimeProvider clock, CancellationToken ct)
     {
         var permission = await policy.ForWorkspaceAsync(user, workspaceId, ct);
         if (!permission.Has(Permission.Read)) return Problems.NotFound();
@@ -131,6 +132,8 @@ public static class WorkspaceEndpoints
         };
         db.WorkspaceMembers.Add(member);
         audit.Record(AuditActions.MemberAdded, "user", target.Id, workspaceId, new { role = member.Role });
+        var activity = await notifications.PrepareAsync(
+            [new(target.Id, ActivityType.AddedToWorkspace, user.Id, workspaceId, null, null, null)], ct);
 
         try
         {
@@ -140,6 +143,7 @@ public static class WorkspaceEndpoints
         {
             return Problems.Conflict("User is already a member of this workspace.");
         }
+        await notifications.DeliverAsync(activity, ct);
 
         return TypedResults.Created($"/api/v1/workspaces/{workspaceId}/members/{target.Id}",
             new WorkspaceMemberDto(UserDto.From(target), member.Role, member.AddedAt));

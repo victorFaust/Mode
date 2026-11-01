@@ -11,6 +11,8 @@ using Mode.Api.Files.Scanning;
 using Mode.Api.Hubs;
 using Mode.Api.Jobs;
 using Mode.Api.Messaging;
+using Mode.Api.Notifications;
+using Mode.Api.Presence;
 using Mode.Api.Realtime;
 using Mode.Domain.Files;
 using Mode.Infrastructure;
@@ -72,6 +74,23 @@ builder.Services.AddScoped<IJobHandler, FilePreviewJob>();
 builder.Services.AddScoped<IJobHandler, FilePurgeJob>();
 builder.Services.AddHostedService<JobWorker>();
 
+builder.Services.AddOptions<PresenceOptions>().BindConfiguration(PresenceOptions.SectionName);
+builder.Services.AddSingleton<PresenceTracker>();
+builder.Services.AddSingleton<PresenceNotifier>();
+builder.Services.AddHostedService<PresenceSweeper>();
+
+builder.Services.AddOptions<PushOptions>().BindConfiguration(PushOptions.SectionName);
+builder.Services.AddOptions<EmailOptions>().BindConfiguration(EmailOptions.SectionName);
+builder.Services.AddScoped<PreferencesStore>();
+builder.Services.AddScoped<NotificationContent>();
+builder.Services.AddScoped<NotificationService>();
+builder.Services.AddHttpClient<IPushSender, WebPushSender>(c => c.Timeout = TimeSpan.FromSeconds(30))
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
+builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
+builder.Services.AddScoped<IJobHandler, PushSendJob>();
+builder.Services.AddScoped<IJobHandler, ActivityExpiryJob>();
+builder.Services.AddScoped<IJobHandler, EmailDigestJob>();
+
 builder.Services.AddSignalR()
     .AddJsonProtocol(o => o.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
@@ -111,7 +130,10 @@ app.MapGroup("/api/v1")
     .MapChannelEndpoints()
     .MapConversationEndpoints()
     .MapMessageEndpoints()
-    .MapFileEndpoints();
+    .MapFileEndpoints()
+    .MapActivityEndpoints()
+    .MapRoomStateEndpoints()
+    .MapSearchEndpoints();
 
 app.MapInternalFileEndpoints();
 

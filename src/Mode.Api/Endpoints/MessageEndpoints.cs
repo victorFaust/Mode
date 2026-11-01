@@ -4,6 +4,7 @@ using Mode.Api.Auth;
 using Mode.Api.Authorization;
 using Mode.Api.Files;
 using Mode.Api.Messaging;
+using Mode.Api.Notifications;
 using Mode.Api.Realtime;
 using Mode.Domain.Entities;
 using Mode.Infrastructure.Data;
@@ -15,11 +16,11 @@ public static class MessageEndpoints
     public static RouteGroupBuilder MapMessageEndpoints(this RouteGroupBuilder api)
     {
         api.MapGet("/channels/{channelId:guid}/messages",
-            (Guid channelId, long? before, int? limit, CurrentUser user, AccessPolicy policy, MessageStore store, CancellationToken ct) =>
-                List(new RoomRef(RoomType.Channel, channelId), before, limit, user, policy, store, ct)).WithTags("Messages");
+            (Guid channelId, long? before, long? after, int? limit, CurrentUser user, AccessPolicy policy, MessageStore store, CancellationToken ct) =>
+                List(new RoomRef(RoomType.Channel, channelId), before, after, limit, user, policy, store, ct)).WithTags("Messages");
         api.MapGet("/conversations/{conversationId:guid}/messages",
-            (Guid conversationId, long? before, int? limit, CurrentUser user, AccessPolicy policy, MessageStore store, CancellationToken ct) =>
-                List(new RoomRef(RoomType.Conversation, conversationId), before, limit, user, policy, store, ct)).WithTags("Messages");
+            (Guid conversationId, long? before, long? after, int? limit, CurrentUser user, AccessPolicy policy, MessageStore store, CancellationToken ct) =>
+                List(new RoomRef(RoomType.Conversation, conversationId), before, after, limit, user, policy, store, ct)).WithTags("Messages");
         api.MapPost("/channels/{channelId:guid}/messages",
             (Guid channelId, SendMessageRequest body, IOptions<FilesOptions> files, [AsParameters] MessageDependencies deps, CancellationToken ct) =>
                 Send(new RoomRef(RoomType.Channel, channelId), body, files.Value, deps, ct)).WithTags("Messages");
@@ -40,13 +41,20 @@ public static class MessageEndpoints
     /// <summary>Services shared by the write handlers.</summary>
     public sealed record MessageDependencies(
         CurrentUser User, ModeDbContext Db, AccessPolicy Policy, MessageStore Store, MentionProcessor Mentions,
-        RealtimeNotifier Notifier, TimeProvider Clock);
+        NotificationService Notifications, RealtimeNotifier Notifier, TimeProvider Clock);
 
+    /// <summary>
+    /// Newest first by default. With <c>after</c> (e.g. the last read sequence) returns the oldest messages after it,
+    /// so a client can open a room at the first unread message.
+    /// </summary>
     private static async Task<IResult> List(
-        RoomRef room, long? before, int? limit, CurrentUser user, AccessPolicy policy, MessageStore store, CancellationToken ct)
+        RoomRef room, long? before, long? after, int? limit, CurrentUser user, AccessPolicy policy, MessageStore store, CancellationToken ct)
     {
         if (!(await policy.ForRoomAsync(user, room, ct)).Has(Permission.Read)) return Problems.NotFound();
-        return TypedResults.Ok(await store.TopLevelPageAsync(room, before, limit ?? 50, ct));
+        if (before is not null && after is not null) return Problems.Invalid("after", "Use either before or after, not both.");
+        return TypedResults.Ok(after is { } from
+            ? await store.TopLevelPageAfterAsync(room, from, limit ?? 50, ct)
+            : await store.TopLevelPageAsync(room, before, limit ?? 50, ct));
     }
 
     private static async Task<IResult> Get(Guid messageId, CurrentUser user, AccessPolicy policy, MessageStore store, CancellationToken ct)
@@ -64,7 +72,7 @@ public static class MessageEndpoints
 
     private static async Task<IResult> Send(RoomRef room, SendMessageRequest body, FilesOptions fileOptions, MessageDependencies deps, CancellationToken ct)
     {
-        var (user, db, policy, store, mentions, notifier, clock) = deps;
+        var (user, db, policy, store, mentions, notifications, notifier, clock) = deps;
         var permission = await policy.ForRoomAsync(user, room, ct);
         if (!permission.Has(Permission.Read)) return Problems.NotFound();
         if (!permission.Has(Permission.Post)) return Problems.Forbidden("This channel is archived.");
@@ -104,7 +112,7 @@ public static class MessageEndpoints
             ? await db.Channels.Where(c => c.Id == room.Id).Select(c => (Guid?)c.WorkspaceId).SingleAsync(ct)
             : null;
 
-        IReadOnlyList<ActivityItem> activity;
+        IReadOnlyList<PreparedNotification> activity;
         await using (var transaction = await db.Database.BeginTransactionAsync(ct))
         {
             var sequence = await store.NextSequenceAsync(room, ct);
@@ -125,15 +133,23 @@ public static class MessageEndpoints
                 message.Attachments.Add(new MessageAttachment { FileAssetId = file.Id, VersionNo = file.CurrentVersionNo });
             db.Messages.Add(message);
 
+            var requests = await mentions.ApplyAsync(message, room, workspaceId, content.Mentions, ct);
+            NotificationRequest Request(string recipient, ActivityType type) =>
+                new(recipient, type, user.Id, workspaceId, message.ChannelId, message.ConversationId, id);
+
             if (body.ParentMessageId is { } replyTo)
             {
                 var parent = await db.Messages.SingleAsync(m => m.Id == replyTo, ct);
                 parent.ReplyCount++;
                 parent.LastReplyAt = now;
                 parent.UpdatedSequence = sequence;
+                requests.Add(Request(parent.AuthorUserId, ActivityType.Reply));
             }
+            if (room.Type == RoomType.Conversation)
+                requests.AddRange((await db.ConversationMembers.Where(m => m.ConversationId == room.Id).Select(m => m.UserId).ToListAsync(ct))
+                    .Select(member => Request(member, ActivityType.ChatMessage)));
 
-            activity = await mentions.ApplyAsync(message, room, workspaceId, content.Mentions, ct);
+            activity = await notifications.PrepareAsync(requests, ct);
             try
             {
                 await db.SaveChangesAsync(ct);
@@ -150,13 +166,13 @@ public static class MessageEndpoints
 
         var dto = await store.GetDtoAsync(id, ct);
         await notifier.MessageCreatedAsync(dto);
-        await notifier.ActivityCreatedAsync(activity.Select(a => (a.UserId, MentionProcessor.ToDto(a))));
+        await notifications.DeliverAsync(activity, ct);
         return TypedResults.Created($"/api/v1/messages/{id}", dto);
     }
 
     private static async Task<IResult> Edit(Guid messageId, EditMessageRequest body, [AsParameters] MessageDependencies deps, CancellationToken ct)
     {
-        var (user, db, policy, store, mentions, notifier, clock) = deps;
+        var (user, db, policy, store, mentions, notifications, notifier, clock) = deps;
         var permission = await policy.ForMessageAsync(user, messageId, ct);
         if (!permission.Has(Permission.Read)) return Problems.NotFound();
         if (!permission.Has(Permission.Edit)) return Problems.Forbidden("Only the author can edit, and not after deletion.");
@@ -167,7 +183,7 @@ public static class MessageEndpoints
             ? await db.Channels.Where(c => c.Id == room.Id).Select(c => (Guid?)c.WorkspaceId).SingleAsync(ct)
             : null;
 
-        IReadOnlyList<ActivityItem> activity;
+        IReadOnlyList<PreparedNotification> activity;
         await using (var transaction = await db.Database.BeginTransactionAsync(ct))
         {
             var sequence = await store.NextSequenceAsync(room, ct);
@@ -185,7 +201,7 @@ public static class MessageEndpoints
             message.BodyMarkdown = content.Markdown;
             message.EditedAt = now;
             message.UpdatedSequence = sequence;
-            activity = await mentions.ApplyAsync(message, room, workspaceId, content.Mentions, ct);
+            activity = await notifications.PrepareAsync(await mentions.ApplyAsync(message, room, workspaceId, content.Mentions, ct), ct);
 
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
@@ -193,13 +209,13 @@ public static class MessageEndpoints
 
         var dto = await store.GetDtoAsync(messageId, ct);
         await notifier.MessageEditedAsync(dto);
-        await notifier.ActivityCreatedAsync(activity.Select(a => (a.UserId, MentionProcessor.ToDto(a))));
+        await notifications.DeliverAsync(activity, ct);
         return TypedResults.Ok(dto);
     }
 
     private static async Task<IResult> Delete(Guid messageId, [AsParameters] MessageDependencies deps, CancellationToken ct)
     {
-        var (user, db, policy, store, _, notifier, clock) = deps;
+        var (user, db, policy, store, _, _, notifier, clock) = deps;
         var permission = await policy.ForMessageAsync(user, messageId, ct);
         if (!permission.Has(Permission.Read)) return Problems.NotFound();
         if (!permission.Has(Permission.Delete)) return Problems.Forbidden();
@@ -241,14 +257,18 @@ public static class MessageEndpoints
 
     private static async Task<IResult> ChangeReaction(Guid messageId, string emoji, bool add, MessageDependencies deps, CancellationToken ct)
     {
-        var (user, db, policy, store, _, notifier, clock) = deps;
+        var (user, db, policy, store, _, notifications, notifier, clock) = deps;
         var permission = await policy.ForMessageAsync(user, messageId, ct);
         if (!permission.Has(Permission.Read)) return Problems.NotFound();
         if (!permission.Has(Permission.Post)) return Problems.Forbidden("This channel is archived.");
         if (!IsValidEmoji(emoji)) return Problems.Invalid("emoji", "Use a single emoji or a :shortcode: of up to 32 characters.");
 
         var room = RoomRef.Of(await db.Messages.AsNoTracking().SingleAsync(m => m.Id == messageId, ct));
+        var workspaceId = room.Type == RoomType.Channel
+            ? await db.Channels.Where(c => c.Id == room.Id).Select(c => (Guid?)c.WorkspaceId).SingleAsync(ct)
+            : null;
         long sequence;
+        IReadOnlyList<PreparedNotification> activity = [];
         await using (var transaction = await db.Database.BeginTransactionAsync(ct))
         {
             sequence = await store.NextSequenceAsync(room, ct);
@@ -264,9 +284,15 @@ public static class MessageEndpoints
             }
 
             if (add)
+            {
                 db.Reactions.Add(new Reaction { MessageId = messageId, UserId = user.Id, Emoji = emoji, CreatedAt = clock.GetUtcNow() });
+                activity = await notifications.PrepareAsync(
+                    [new(message.AuthorUserId, ActivityType.Reaction, user.Id, workspaceId, message.ChannelId, message.ConversationId, messageId)], ct);
+            }
             else
+            {
                 db.Reactions.Remove(existing!);
+            }
             message.UpdatedSequence = sequence;
 
             await db.SaveChangesAsync(ct);
@@ -275,6 +301,7 @@ public static class MessageEndpoints
 
         var reactions = await store.ReactionSummaryAsync(messageId, ct);
         await notifier.ReactionChangedAsync(room, sequence, messageId, reactions);
+        await notifications.DeliverAsync(activity, ct);
         return TypedResults.Ok(reactions);
     }
 

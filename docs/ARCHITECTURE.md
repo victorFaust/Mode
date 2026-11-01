@@ -218,23 +218,30 @@ Base path `/api/v1`. Every request carries `Authorization: Bearer <host JWT>`. E
 | | `POST /conversations` | `{ type: "direct", userId }` or `{ type: "group", userIds, name? }` | `200` (existing direct) or `201 ConversationDto` |
 | | `PATCH /conversations/{id}` | `{ name }` (group only) | `ConversationDto` |
 | | `POST / DELETE /conversations/{id}/members[/{userId}]` | `{ userId }` | `201` / `204` |
-| Messages | `GET /channels/{id}/messages`, `GET /conversations/{id}/messages` | `?before=&limit=` | page of `MessageDto` (top level, newest first) |
+| Messages | `GET /channels/{id}/messages`, `GET /conversations/{id}/messages` | `?before=&limit=` or `?after=&limit=` | page of `MessageDto`: newest first with `nextBefore`; with `after`, oldest first with `nextAfter` (open at the first unread) |
 | | `POST /channels/{id}/messages`, `POST /conversations/{id}/messages` | `{ id, bodyMarkdown, parentMessageId?, fileIds? }` | `201 MessageDto` or `200` if the id already exists |
 | | `GET /messages/{id}/replies` | `?after=&limit=` | page of `MessageDto` (oldest first) |
 | | `PATCH /messages/{id}` | `{ bodyMarkdown }` | `MessageDto` (author only) |
 | | `DELETE /messages/{id}` | | `204` (author, or a channel or workspace owner) |
 | | `PUT / DELETE /messages/{id}/reactions/{emoji}` | | `ReactionSummaryDto[]` |
-| Read state | `PUT /channels/{id}/read`, `PUT /conversations/{id}/read` | `{ sequence }` | `204` |
+| Read state | `PUT /channels/{id}/read`, `PUT /conversations/{id}/read` | `{ sequence }` | `{ lastReadSequence }` (only moves forward; clears feed items up to it) |
+| | `PUT /channels/{id}/mute`, `PUT /conversations/{id}/mute` | `{ muted }` | `{ muted }` |
+| | `GET /me/unread` | | `[{ room, unreadCount, mentionCount, lastReadSequence, firstUnreadSequence, isMuted }]` |
 | Files | `POST /files/uploads` | `{ roomType, roomId, name, size, contentType }` | `{ fileId, versionId, uploadUrl, expiresAt }` |
 | | `POST /files/{fileId}/versions/{versionId}/complete` | | `FileDto` (scan status pending) |
 | | `GET /files/{id}`, `GET /files/{id}/versions` | | `FileDto`, `FileVersionDto[]` |
 | | `GET /files/{id}/download?version=` | | `302` to a short-lived signed URL |
 | | `GET /channels/{id}/files`, `GET /conversations/{id}/files` | | page of `FileDto` |
 | | `DELETE /files/{id}` | | `204` (recoverable for N days) |
-| Activity | `GET /activity?type=&unreadOnly=` | | page of `ActivityDto` |
-| | `POST /activity/{id}/read`, `POST /activity/read-all` | | `204` |
-| Presence | `PUT /me/presence` | `{ status, message? }` | `204` |
-| Search | `GET /search?q=&scope=messages,files,people&channelId=&authorId=&from=&to=` | | `{ messages, files, people }` (permission-filtered) |
+| Activity | `GET /activity?type=&unreadOnly=&before=&limit=` | | `{ items: [{ id, type, actor, ..., title, body, createdAt, isRead }], unreadCount, nextBefore }` |
+| | `GET /activity/unread-count` | | `{ unreadCount }` |
+| | `POST /activity/{id}/read`, `POST /activity/read-all` | | `{ unreadCount }` |
+| Notifications | `GET / PUT /me/notification-settings` | `{ mentions, chats, channels: "BannerAndFeed"\|"FeedOnly"\|"Off", pushEnabled, emailDigest: "Off"\|"Hourly"\|"Daily" }` | same |
+| | `GET /push/public-key` | | `{ enabled, publicKey }` (VAPID, for `pushManager.subscribe`) |
+| | `POST /push/subscriptions`, `DELETE /push/subscriptions?endpoint=` | browser `PushSubscription` JSON | `204` |
+| Presence | `PUT /me/presence` | `{ status: "Available"\|"Busy"\|"DoNotDisturb"\|"Away", message? }` | `PresenceDto` |
+| | `GET /users/presence?ids=a,b` | | `PresenceDto[]` (only people you share a workspace or chat with) |
+| Search | `GET /search?q=&scope=All\|Messages\|Files\|People&channelId=&conversationId=&authorId=&from=&to=&limit=` | | `{ messages, files, people }`; snippets are `{ text, highlights: [{ start, length }] }` |
 
 Core shapes:
 
@@ -266,9 +273,11 @@ Client to server (each call is authorized by the same policy layer as REST). Mes
 | `JoinRooms` | `[{ room, lastSequence }]` (max 200) | `[{ room, granted, currentSequence, missed: MessageDto[], resyncRequired }]`. Rooms the user cannot read come back with `granted: false`. `missed` holds the current state of every message changed after `lastSequence`, ordered by `updatedSequence`. If more than 500 changed, `resyncRequired` is true and the client should reload over REST. |
 | `LeaveRoom` | `room` | |
 | `Typing` | `room, parentMessageId?` | Ignored unless the room is joined and the user can post. Throttled to one event every 3 seconds per user per room; sent to others only. |
-| `Heartbeat` | `{ active: bool }` | Prompt 5 (presence) |
+| `Heartbeat` | `active: bool` | Send every minute; `true` if the user interacted since the last one. |
+| `SubscribePresence` | `userIds[]` (max 500) | `PresenceDto[]` for the visible ones, then `presenceChanged` events. Others are silently left out. |
+| `UnsubscribePresence` | `userIds[]` | |
 
-Every connection also joins its personal group `user:{id}`, which receives `activityCreated`.
+Every connection also joins its personal group `user:{id}`, which receives `activityCreated`, `activityRead`, `notification` and `readMarkerChanged`.
 
 Server to client:
 
@@ -279,8 +288,11 @@ Server to client:
 | `messageDeleted` | `{ room, sequence, messageId, deletedAt }` |
 | `reactionChanged` | `{ room, sequence, messageId, reactions: [{ emoji, count, userIds }] }` |
 | `typing` | `{ room, userId, parentMessageId? }` |
-| `presenceChanged` | Prompt 5 |
-| `activityCreated` | `{ item: ActivityDto }` |
+| `presenceChanged` | `{ userId, status, message }` |
+| `activityCreated` | `{ item: ActivityDto, unreadCount }` |
+| `activityRead` | `{ activityIds, unreadCount }` (keeps the badge in step across tabs) |
+| `notification` | `{ activityId, type, title, body, channelId?, conversationId?, messageId? }`: show an in-app banner (or a browser notification if the tab is hidden) |
+| `readMarkerChanged` | `{ room, lastReadSequence }` (another tab or device read the room) |
 | `roomAccessRevoked` | `{ room }`, sent when the server removes the connection from the room after a membership or role change |
 | `fileUpdated` | `{ room, file: FileDto }`, sent when a file is uploaded, scanned, previewed, deleted or restored |
 
@@ -416,3 +428,15 @@ dotnet run --project src/Mode.Api                 # http://localhost:5080/health
 
 Run the SQL Server directory integration tests with:
 `$env:MODE_TEST_HOSTDIR_CONNECTION = "Server=.\MYDB;Database=ModeHostMock;User Id=mode_reader;Password=<from .env>;TrustServerCertificate=True"; dotnet test`
+
+**Browser push:** rerun `./scripts/dev-setup.ps1 -PushSubject mailto:you@example.com` once. It keeps the generated VAPID keys and turns push on.
+
+**Email digests (Gmail):** turn on 2-step verification for the Google account, create an App Password, then store it in user secrets (never in appsettings):
+
+```powershell
+$p = 'src/Mode.Api'
+dotnet user-secrets set Email:Enabled true --project $p
+dotnet user-secrets set Email:Username you@gmail.com --project $p
+dotnet user-secrets set Email:FromAddress you@gmail.com --project $p
+dotnet user-secrets set Email:Password '<16-character app password>' --project $p
+```

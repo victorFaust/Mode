@@ -105,6 +105,7 @@ internal sealed class ActivityItemConfiguration : IEntityTypeConfiguration<Activ
         b.Property(a => a.ActorUserId).IsUserId();
         b.Property(a => a.Type).IsEnumString();
         b.HasIndex(a => new { a.UserId, a.CreatedAt });
+        b.HasIndex(a => a.UserId).HasFilter("\"ReadAt\" IS NULL").HasDatabaseName("IX_ActivityItems_UserId_Unread");
         b.HasIndex(a => a.ExpiresAt);
 
         b.HasOne<Workspace>().WithMany().HasForeignKey(a => a.WorkspaceId).OnDelete(DeleteBehavior.Cascade);
@@ -138,6 +139,19 @@ internal sealed class UserSettingsConfiguration : IEntityTypeConfiguration<UserS
         b.HasKey(s => s.UserId);
         b.Property(s => s.UserId).IsUserId();
         b.Property(s => s.PreferencesJson).HasColumnType("jsonb").HasDefaultValueSql("'{}'::jsonb");
+    }
+}
+
+internal sealed class PushSubscriptionConfiguration : IEntityTypeConfiguration<PushSubscription>
+{
+    public void Configure(EntityTypeBuilder<PushSubscription> b)
+    {
+        b.Property(p => p.UserId).IsUserId();
+        b.Property(p => p.Endpoint).HasMaxLength(1000);
+        b.Property(p => p.P256dh).HasMaxLength(200);
+        b.Property(p => p.Auth).HasMaxLength(100);
+        b.HasIndex(p => p.Endpoint).IsUnique();
+        b.HasIndex(p => p.UserId);
     }
 }
 

@@ -4,7 +4,9 @@ using Mode.Api.Auditing;
 using Mode.Api.Auth;
 using Mode.Api.Authorization;
 using Mode.Api.Messaging;
+using Mode.Api.Presence;
 using Mode.Api.Realtime;
+using Mode.Domain.Directory;
 using Mode.Infrastructure.Data;
 
 namespace Mode.Api.Hubs;
@@ -25,11 +27,15 @@ public sealed class ModeHub(
     AccessPolicy policy,
     ConnectionRegistry registry,
     MessageStore store,
-    TypingThrottle typing) : Hub
+    TypingThrottle typing,
+    PresenceTracker presence,
+    PresenceNotifier presenceNotifier,
+    IUserDirectory directory) : Hub
 {
     public const string Path = "/hubs/mode";
     public const int MaxReplay = 500;
     public const int MaxRoomsPerJoin = 200;
+    public const int MaxPresenceSubscriptions = 500;
 
     public override async Task OnConnectedAsync()
     {
@@ -39,13 +45,46 @@ public sealed class ModeHub(
 
         audit.Record(AuditActions.RealtimeConnected, "connection", Context.ConnectionId, actorUserId: user.Id);
         await db.SaveChangesAsync(Context.ConnectionAborted);
+        await presenceNotifier.PublishAsync(presence.Connected(user.Id, Context.ConnectionId));
         await base.OnConnectedAsync();
     }
 
-    public override Task OnDisconnectedAsync(Exception? exception)
+    public override async Task OnDisconnectedAsync(Exception? exception)
     {
         registry.Remove(Context.ConnectionId);
-        return base.OnDisconnectedAsync(exception);
+        await presenceNotifier.PublishAsync(presence.Disconnected(CurrentUser.FromPrincipal(Context.User!).Id, Context.ConnectionId));
+        await base.OnDisconnectedAsync(exception);
+    }
+
+    /// <summary>Sent by clients periodically; <paramref name="active"/> is true when the user interacted since the last one.</summary>
+    public Task Heartbeat(bool active) =>
+        presenceNotifier.PublishAsync(presence.Heartbeat(CurrentUser.FromPrincipal(Context.User!).Id, active));
+
+    /// <summary>
+    /// Starts presence updates for the given people and returns their current status. People the caller shares no
+    /// workspace or chat with are silently left out.
+    /// </summary>
+    public async Task<IReadOnlyList<PresenceDto>> SubscribePresence(IReadOnlyList<string> userIds)
+    {
+        if (userIds.Count > MaxPresenceSubscriptions) throw new HubException($"Subscribe to at most {MaxPresenceSubscriptions} people at once.");
+        var user = CurrentUser.FromPrincipal(Context.User!);
+        var ids = userIds.Select(id => directory.TryNormalizeId(id, out var normalized) ? normalized : null).OfType<string>().Distinct().ToList();
+        var visible = await policy.VisiblePresenceAsync(user, ids, Context.ConnectionAborted);
+
+        var result = new List<PresenceDto>(visible.Count);
+        foreach (var id in ids.Where(visible.Contains))
+        {
+            await Groups.AddToGroupAsync(Context.ConnectionId, PresenceNotifier.Group(id), Context.ConnectionAborted);
+            result.Add(presence.Get(id));
+        }
+        return result;
+    }
+
+    public async Task UnsubscribePresence(IReadOnlyList<string> userIds)
+    {
+        foreach (var id in userIds.Take(MaxPresenceSubscriptions))
+            if (directory.TryNormalizeId(id, out var normalized))
+                await Groups.RemoveFromGroupAsync(Context.ConnectionId, PresenceNotifier.Group(normalized), Context.ConnectionAborted);
     }
 
     public async Task<IReadOnlyList<JoinRoomResult>> JoinRooms(IReadOnlyList<JoinRoomRequest> rooms)

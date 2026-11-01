@@ -20,6 +20,22 @@ public enum Permission
     Restore = 128,
 }
 
+public sealed record ReadableRooms(IReadOnlyList<Guid> WorkspaceIds, IReadOnlyList<Guid> ChannelIds, IReadOnlyList<Guid> ConversationIds);
+
+public static class ActivityVisibility
+{
+    /// <summary>Feed items stay hidden once the user can no longer read the room they came from.</summary>
+    public static System.Linq.Expressions.Expression<Func<ActivityItem, bool>> VisibleIn(ReadableRooms rooms)
+    {
+        var workspaceIds = rooms.WorkspaceIds;
+        var channelIds = rooms.ChannelIds;
+        var conversationIds = rooms.ConversationIds;
+        return a => a.ChannelId != null ? channelIds.Contains(a.ChannelId.Value)
+            : a.ConversationId != null ? conversationIds.Contains(a.ConversationId.Value)
+            : a.WorkspaceId == null || workspaceIds.Contains(a.WorkspaceId.Value);
+    }
+}
+
 public static class PermissionExtensions
 {
     public static bool Has(this Permission granted, Permission required) => (granted & required) == required;
@@ -143,6 +159,56 @@ public sealed class AccessPolicy(ModeDbContext db)
                 .Has(Permission.Read))
             .Select(m => m.UserId)
             .ToList();
+    }
+
+    /// <summary>
+    /// Every workspace, channel and conversation the user can read, for filtering lists (feed, search, unread counts)
+    /// in one query instead of one check per row.
+    /// </summary>
+    public async Task<ReadableRooms> ReadableRoomsAsync(CurrentUser user, CancellationToken ct)
+    {
+        var roles = (await db.WorkspaceMembers.Where(m => m.UserId == user.Id).Select(m => new { m.WorkspaceId, m.Role }).ToListAsync(ct))
+            .ToDictionary(m => m.WorkspaceId, m => EffectiveRole(m.Role, user));
+        var workspaceIds = roles.Keys.ToList();
+
+        var channels = await db.Channels
+            .Where(c => workspaceIds.Contains(c.WorkspaceId))
+            .Select(c => new
+            {
+                c.Id,
+                c.WorkspaceId,
+                c.Type,
+                Archived = c.ArchivedAt != null,
+                IsCreator = c.CreatedByUserId == user.Id,
+                IsMember = c.Members.Any(m => m.UserId == user.Id),
+            })
+            .ToListAsync(ct);
+        var channelIds = channels
+            .Where(c => ChannelPermissions(roles[c.WorkspaceId], c.Type, c.Archived, c.IsMember, c.IsCreator).Has(Permission.Read))
+            .Select(c => c.Id)
+            .ToList();
+
+        var conversationIds = await db.ConversationMembers.Where(m => m.UserId == user.Id).Select(m => m.ConversationId).ToListAsync(ct);
+        return new ReadableRooms(workspaceIds, channelIds, conversationIds);
+    }
+
+    /// <summary>Presence is visible for yourself and for people you share a workspace or conversation with.</summary>
+    public async Task<IReadOnlySet<string>> VisiblePresenceAsync(CurrentUser user, IReadOnlyCollection<string> userIds, CancellationToken ct)
+    {
+        var myWorkspaces = db.WorkspaceMembers.Where(m => m.UserId == user.Id).Select(m => m.WorkspaceId);
+        var myConversations = db.ConversationMembers.Where(m => m.UserId == user.Id).Select(m => m.ConversationId);
+        var visible = new HashSet<string>(await db.WorkspaceMembers
+            .Where(m => userIds.Contains(m.UserId) && myWorkspaces.Contains(m.WorkspaceId))
+            .Select(m => m.UserId)
+            .Distinct()
+            .ToListAsync(ct));
+        visible.UnionWith(await db.ConversationMembers
+            .Where(m => userIds.Contains(m.UserId) && myConversations.Contains(m.ConversationId))
+            .Select(m => m.UserId)
+            .Distinct()
+            .ToListAsync(ct));
+        if (userIds.Contains(user.Id)) visible.Add(user.Id);
+        return visible;
     }
 
     /// <summary>People who may use the directory can chat with anyone; guests only with people they share a workspace with.</summary>

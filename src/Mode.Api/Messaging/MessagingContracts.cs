@@ -36,8 +36,11 @@ public sealed record MessageDto(
     IReadOnlyList<MentionDto> Mentions,
     IReadOnlyList<AttachmentDto> Files);
 
-/// <summary>Newest first; pass <see cref="NextBefore"/> as <c>before</c> to get the next page.</summary>
-public sealed record MessagePage(IReadOnlyList<MessageDto> Items, long? NextBefore);
+/// <summary>
+/// Newest first; pass <see cref="NextBefore"/> as <c>before</c> to get older messages. Pages requested with <c>after</c>
+/// are oldest first; pass <see cref="NextAfter"/> as <c>after</c> to get newer ones.
+/// </summary>
+public sealed record MessagePage(IReadOnlyList<MessageDto> Items, long? NextBefore, long? NextAfter);
 
 public sealed record SendMessageRequest(Guid? Id, string? BodyMarkdown, Guid? ParentMessageId, IReadOnlyList<Guid>? FileIds);
 
