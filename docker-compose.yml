@@ -1,0 +1,82 @@
+name: mode
+
+# Local development stack. The API normally runs on the host (`dotnet run`) so it can reach the
+# local SQL Server over shared memory; `--profile full` also runs it in a container.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: mode
+      POSTGRES_USER: mode
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mode -d mode"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  clamav:
+    image: clamav/clamav:1.4
+    ports:
+      - "127.0.0.1:3310:3310"
+    volumes:
+      - clamav:/var/lib/clamav
+      - ./docker/clamav/clamd.conf:/etc/clamav/clamd.conf:ro
+
+  file-processor:
+    build: ./services/file-processor
+    environment:
+      PROCESSOR_KEY: ${PROCESSOR_KEY:?set PROCESSOR_KEY in .env}
+      # The API runs on the host in development; it hands out signed URLs under this base.
+      MODE_API_BASE_URL: http://host.docker.internal:5080
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:8090:8000"
+
+  mock-issuer:
+    build:
+      context: .
+      dockerfile: tools/Mode.MockIssuer/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      MockIssuer__Issuer: http://localhost:5100
+      MockIssuer__Audience: ${JWT_AUDIENCE:-mode-api}
+    ports:
+      - "127.0.0.1:5100:8080"
+
+  client:
+    image: node:22-alpine
+    working_dir: /app
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+    volumes:
+      - ./client:/app
+      - client_node_modules:/app/node_modules
+    ports:
+      - "127.0.0.1:5173:5173"
+
+  api:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: src/Mode.Api/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Mode: Host=postgres;Database=mode;Username=mode;Password=${POSTGRES_PASSWORD}
+      UserDirectory__ConnectionString: ${HOST_DIRECTORY_CONNECTION_STRING}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:5080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  clamav:
+  client_node_modules:

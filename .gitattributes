@@ -1,0 +1,4 @@
+# Files mounted into Linux containers must keep LF line endings.
+docker/** text eol=lf
+*.sh text eol=lf
+Jenkinsfile text eol=lf
