@@ -34,18 +34,18 @@ public static class ActivityEndpoints
     public static RouteGroupBuilder MapActivityEndpoints(this RouteGroupBuilder api)
     {
         var activity = api.MapGroup("/activity").WithTags("Activity");
-        activity.MapGet("/", Feed);
-        activity.MapGet("/unread-count", UnreadCount);
-        activity.MapPost("/{activityId:guid}/read", MarkRead);
-        activity.MapPost("/read-all", MarkAllRead);
+        activity.MapGet("/", Feed).Produces<ActivityPage>();
+        activity.MapGet("/unread-count", UnreadCount).Produces<UnreadCountDto>();
+        activity.MapPost("/{activityId:guid}/read", MarkRead).Produces<UnreadCountDto>();
+        activity.MapPost("/read-all", MarkAllRead).Produces<UnreadCountDto>();
 
-        api.MapGet("/me/notification-settings", GetSettings).WithTags("Notifications");
-        api.MapPut("/me/notification-settings", PutSettings).WithTags("Notifications");
+        api.MapGet("/me/notification-settings", GetSettings).WithTags("Notifications").Produces<NotificationSettings>();
+        api.MapPut("/me/notification-settings", PutSettings).WithTags("Notifications").Produces<NotificationSettings>();
 
         var push = api.MapGroup("/push").WithTags("Notifications");
-        push.MapGet("/public-key", PushConfig);
-        push.MapPost("/subscriptions", Subscribe);
-        push.MapDelete("/subscriptions", Unsubscribe);
+        push.MapGet("/public-key", PushConfig).Produces<PushConfigDto>();
+        push.MapPost("/subscriptions", Subscribe).Produces(StatusCodes.Status204NoContent);
+        push.MapDelete("/subscriptions", Unsubscribe).Produces(StatusCodes.Status204NoContent);
         return api;
     }
 

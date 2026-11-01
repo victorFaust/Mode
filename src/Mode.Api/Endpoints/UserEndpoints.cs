@@ -8,10 +8,10 @@ public static class UserEndpoints
 {
     public static RouteGroupBuilder MapUserEndpoints(this RouteGroupBuilder api)
     {
-        api.MapGet("/me", GetMe).WithTags("Users");
+        api.MapGet("/me", GetMe).WithTags("Users").Produces<MeDto>();
         var users = api.MapGroup("/users").WithTags("Users");
-        users.MapGet("/search", Search);
-        users.MapGet("/{userId}", GetById);
+        users.MapGet("/search", Search).Produces<UserDto[]>();
+        users.MapGet("/{userId}", GetById).Produces<UserDto>();
         return api;
     }
 

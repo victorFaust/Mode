@@ -1,0 +1,156 @@
+/* Design tokens. Everything is scoped to the Mode root so nothing leaks into the host page. */
+[data-mode-root] {
+  --m-font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --m-mono: "Cascadia Mono", Consolas, "SFMono-Regular", Menlo, monospace;
+
+  --m-text-caption: 12px;
+  --m-lh-caption: 16px;
+  --m-text-small: 13px;
+  --m-lh-small: 18px;
+  --m-text-body: 14px;
+  --m-lh-body: 20px;
+  --m-text-subtitle: 16px;
+  --m-lh-subtitle: 22px;
+  --m-text-title: 20px;
+  --m-lh-title: 28px;
+  --m-text-display: 24px;
+  --m-lh-display: 32px;
+
+  --m-space-1: 2px;
+  --m-space-2: 4px;
+  --m-space-3: 8px;
+  --m-space-4: 12px;
+  --m-space-5: 16px;
+  --m-space-6: 20px;
+  --m-space-7: 24px;
+  --m-space-8: 32px;
+  --m-space-9: 40px;
+
+  --m-radius-sm: 4px;
+  --m-radius-md: 6px;
+  --m-radius-lg: 8px;
+  --m-radius-full: 999px;
+
+  --m-rail-width: 64px;
+  --m-list-width: 280px;
+  --m-side-width: 360px;
+
+  --m-motion-fast: 120ms;
+  --m-motion: 200ms;
+  --m-ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* UBA palette (ubagroup.com): brand red #D51709, deep red #8B1911, tint #FFA19A; neutrals #171717 #404040 #69727D. */
+  --m-accent: #d51709;
+  --m-accent-hover: color-mix(in srgb, var(--m-accent) 85%, #000);
+  --m-accent-pressed: color-mix(in srgb, var(--m-accent) 70%, #000);
+  --m-on-accent: #ffffff;
+}
+
+[data-mode-root][data-theme="light"] {
+  color-scheme: light;
+  --m-bg: #ffffff;
+  --m-surface: #f5f6f8;
+  --m-surface-raised: #ffffff;
+  --m-hover: #ebedf0;
+  --m-selected: color-mix(in srgb, var(--m-accent) 9%, #fff);
+  --m-border: #d5d9df;
+  --m-border-strong: #8a929e;
+  --m-text: #171717;
+  --m-text-muted: #5a6270;
+  --m-text-accent: color-mix(in srgb, var(--m-accent) 85%, #000);
+  --m-danger: #b42318;
+  --m-success: #1f7a3d;
+  --m-warning: #8a5a00;
+  --m-warning-bg: #fff4d6;
+  --m-focus: #1a56db;
+  --m-shadow-1: 0 1px 2px rgb(16 24 40 / 0.08), 0 1px 3px rgb(16 24 40 / 0.06);
+  --m-shadow-2: 0 8px 24px rgb(16 24 40 / 0.14), 0 2px 6px rgb(16 24 40 / 0.08);
+  --m-highlight: #fff1a8;
+  --m-mention-bg: color-mix(in srgb, var(--m-accent) 10%, #fff);
+}
+
+[data-mode-root][data-theme="dark"] {
+  color-scheme: dark;
+  --m-bg: #16181c;
+  --m-surface: #1e2126;
+  --m-surface-raised: #24282e;
+  --m-hover: #2a2e35;
+  --m-selected: color-mix(in srgb, var(--m-accent) 22%, #16181c);
+  --m-border: #3a3f48;
+  --m-border-strong: #6b7380;
+  --m-text: #e8eaed;
+  --m-text-muted: #a3aab5;
+  --m-text-accent: #ffa19a;
+  --m-danger: #f97066;
+  --m-success: #4ade80;
+  --m-warning: #fbbf24;
+  --m-warning-bg: #3a2e10;
+  --m-focus: #8ab4ff;
+  --m-shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+  --m-shadow-2: 0 8px 24px rgb(0 0 0 / 0.5), 0 2px 6px rgb(0 0 0 / 0.3);
+  --m-highlight: #5c4a00;
+  --m-mention-bg: color-mix(in srgb, var(--m-accent) 25%, #16181c);
+}
+
+[data-mode-root] {
+  --m-presence-available: #2e8540;
+  --m-presence-busy: #c4314b;
+  --m-presence-away: #c08a00;
+  --m-presence-offline: var(--m-border-strong);
+
+  font-family: var(--m-font);
+  font-size: var(--m-text-body);
+  line-height: var(--m-lh-body);
+  color: var(--m-text);
+  background: var(--m-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+[data-mode-root] *,
+[data-mode-root] *::before,
+[data-mode-root] *::after {
+  box-sizing: border-box;
+}
+
+/* Resets use :where() so component classes always win, whatever order the stylesheets load in. */
+:where([data-mode-root] h1, [data-mode-root] h2, [data-mode-root] h3, [data-mode-root] h4,
+  [data-mode-root] p, [data-mode-root] ul, [data-mode-root] ol, [data-mode-root] figure) {
+  margin: 0;
+}
+
+:where([data-mode-root] button, [data-mode-root] input, [data-mode-root] textarea, [data-mode-root] select) {
+  font: inherit;
+  color: inherit;
+}
+
+[data-mode-root] :focus-visible {
+  outline: 2px solid var(--m-focus);
+  outline-offset: 2px;
+}
+
+[data-mode-root] .m-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-mode-root] *,
+  [data-mode-root] *::before,
+  [data-mode-root] *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@keyframes m-shimmer {
+  from { background-position: -200px 0; }
+  to { background-position: calc(200px + 100%) 0; }
+}

@@ -377,6 +377,45 @@ sequenceDiagram
 
 **Preview statuses:** `Pending`, `Ready`, `NotSupported`, `Failed`.
 
+## 5c. Web client
+
+**Embedding.** The host app loads `dist-lib/mode.js` and `mode.css` (built with `npm run build -- --mode lib`) and mounts Mode into one of its elements:
+
+```ts
+import { mountMode } from "./mode.js";
+const mode = mountMode(element, {
+  getToken: () => host.getAccessToken(),   // called before every request and every realtime (re)connect
+  apiBaseUrl: "https://mode.bank.example", // omit when the API is on the same origin
+  theme: { mode: "light" },                // "light" | "dark" | "system"; optional accent override
+  serviceWorkerUrl: "/mode-sw.js",         // optional: Web Push (copy client/public/mode-sw.js to the host)
+  onUnauthorized: () => host.signIn(),
+});
+mode.setTheme({ mode: "dark" });
+```
+
+Mode has no sign-in screens. If the host runs on a different origin from the API, add that origin to `Cors:AllowedOrigins`. All styles are scoped to `[data-mode-root]`, so nothing leaks into the host page.
+
+**Structure** (`client/src`):
+
+| Folder | Contents |
+| --- | --- |
+| `api/` | `schema.d.ts` generated from `client/openapi.json` (`scripts/export-openapi.ps1`), and the `openapi-fetch` client |
+| `realtime/` | the single SignalR connection: retries forever, rejoins rooms and replays missed changes after reconnecting, sends heartbeats, presence subscriptions |
+| `store/` | Zustand store (state only), pure mutations, and `ModeController`, which turns REST results and realtime events into state changes |
+| `app/`, `views/`, `components/` | shell, rail and lists, message list (virtualized), composer, side panes, activity, search, dialogs |
+| `theme/tokens.css` | type scale, spacing, radii, and light and dark colours (UBA red `#D51709` accent) |
+| `dev/` | the standalone dev shell: picks a seeded user and gets a token from the mock issuer |
+
+**Data flow.** Components read the store through selectors and call controller methods. The controller calls the API and applies the results. The realtime service hands every server event to the controller. Sends are optimistic: they use a client-generated id, show "Sending…", and on failure offer Retry, which reuses the same id so the message can't be duplicated. A gap in a room's sequence numbers triggers a catch-up through `JoinRooms`.
+
+**Local development:** `npm run dev` in `client/` serves the dev shell at http://localhost:5173. It proxies `/api` and `/hubs` to the API (5080) and `/issuer` to the mock issuer (5100), so the browser only ever talks to one origin.
+
+**Tests:**
+- `npm test` runs the component and unit tests with Vitest.
+- `npm run e2e` runs two Playwright flows against the real stack, each with an axe accessibility check: (1) sign in, post in a direct chat and reply in a thread; (2) upload a file in a chat, then find it by search. They run one at a time because both use the same seeded users' chat. Start the Docker services before running them.
+
+**Scope for now:** chats only. Channels and Activity are switched off in `client/src/app/features.ts` (D43).
+
 ## 6. Repository layout
 
 ```

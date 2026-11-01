@@ -30,6 +30,8 @@ public sealed record ChannelDto(
 
 public sealed record ChannelMemberDto(UserDto User, WorkspaceRole Role);
 
+public sealed record ChannelMemberAddedDto(string UserId);
+
 public sealed record CreateWorkspaceRequest(string? Name, string? Description);
 
 public sealed record UpdateWorkspaceRequest(string? Name, string? Description);

@@ -1,0 +1,161 @@
+.shell {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--m-rail-width) var(--m-list-width) minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    "banner banner banner banner"
+    "rail list main side";
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--m-bg);
+}
+.shell[data-list-collapsed="true"] { grid-template-columns: var(--m-rail-width) 0 minmax(0, 1fr) auto; }
+.shell[data-list-collapsed="true"] .list { visibility: hidden; }
+.shell[data-section="files"] { grid-template-columns: var(--m-rail-width) 0 minmax(0, 1fr) auto; }
+.shell[data-section="files"] .list { display: none; }
+
+.banner { grid-area: banner; }
+
+.rail {
+  grid-area: rail;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--m-space-2);
+  padding: var(--m-space-4) 0;
+  background: var(--m-surface);
+  border-right: 1px solid var(--m-border);
+}
+.railItem {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  width: 56px;
+  padding: var(--m-space-3) 0;
+  border: none;
+  border-radius: var(--m-radius-md);
+  background: transparent;
+  color: var(--m-text-muted);
+  font-size: 11px;
+  line-height: 14px;
+  cursor: pointer;
+}
+.railItem:hover { background: var(--m-hover); color: var(--m-text); }
+.railItem[aria-current="page"] { color: var(--m-text-accent); font-weight: 600; }
+.railItem[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--m-accent);
+}
+.railBadge { position: absolute; top: 2px; right: 6px; }
+.railSpacer { flex: 1; }
+.meButton {
+  border: none;
+  background: transparent;
+  padding: 2px;
+  border-radius: var(--m-radius-full);
+  cursor: pointer;
+  --m-presence-ring: var(--m-surface);
+}
+
+.list {
+  grid-area: list;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--m-surface);
+  border-right: 1px solid var(--m-border);
+  overflow: hidden;
+}
+
+.main {
+  grid-area: main;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--m-bg);
+}
+
+.side {
+  grid-area: side;
+  width: var(--m-side-width);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--m-border);
+  background: var(--m-bg);
+}
+
+.resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  margin-left: -3px;
+  cursor: col-resize;
+  z-index: 5;
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+.resizer:hover, .resizer:focus-visible { background: color-mix(in srgb, var(--m-accent) 40%, transparent); }
+
+/* Tablet: the list slides over the conversation. */
+@media (max-width: 1024px) {
+  .shell { grid-template-columns: var(--m-rail-width) 0 minmax(0, 1fr) auto; }
+  .list {
+    position: absolute;
+    grid-area: auto;
+    z-index: 20;
+    top: 0;
+    bottom: 0;
+    left: var(--m-rail-width);
+    width: var(--m-list-width);
+    box-shadow: var(--m-shadow-2);
+    transform: translateX(calc(-100% - var(--m-rail-width)));
+    transition: transform var(--m-motion) var(--m-ease);
+  }
+  .shell[data-list-open="true"] .list { transform: none; }
+  .side { position: absolute; z-index: 25; right: 0; top: 0; bottom: 0; box-shadow: var(--m-shadow-2); max-width: 100%; }
+  .resizer { display: none; }
+}
+
+/* Phone: one pane at a time, navigation at the bottom. */
+@media (max-width: 640px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas: "banner" "main" "rail";
+  }
+  .shell[data-section="files"], .shell[data-list-collapsed="true"] { grid-template-columns: minmax(0, 1fr); }
+  .rail {
+    flex-direction: row;
+    justify-content: space-around;
+    padding: var(--m-space-2) var(--m-space-3) calc(var(--m-space-2) + env(safe-area-inset-bottom));
+    border-right: none;
+    border-top: 1px solid var(--m-border);
+  }
+  .railSpacer { display: none; }
+  .railItem[aria-current="page"]::before { left: 12px; right: 12px; top: -4px; bottom: auto; width: auto; height: 3px; border-radius: 0 0 3px 3px; }
+  .list {
+    position: static;
+    grid-area: main;
+    width: auto;
+    transform: none;
+    box-shadow: none;
+    border-right: none;
+    visibility: visible;
+  }
+  .shell[data-mobile-view="main"] .list { display: none; }
+  .shell[data-mobile-view="list"] .main { display: none; }
+  .side { position: absolute; inset: 0; width: auto; z-index: 30; border-left: none; }
+}

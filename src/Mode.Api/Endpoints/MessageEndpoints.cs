@@ -17,24 +17,26 @@ public static class MessageEndpoints
     {
         api.MapGet("/channels/{channelId:guid}/messages",
             (Guid channelId, long? before, long? after, int? limit, CurrentUser user, AccessPolicy policy, MessageStore store, CancellationToken ct) =>
-                List(new RoomRef(RoomType.Channel, channelId), before, after, limit, user, policy, store, ct)).WithTags("Messages");
+                List(new RoomRef(RoomType.Channel, channelId), before, after, limit, user, policy, store, ct)).WithTags("Messages").Produces<MessagePage>();
         api.MapGet("/conversations/{conversationId:guid}/messages",
             (Guid conversationId, long? before, long? after, int? limit, CurrentUser user, AccessPolicy policy, MessageStore store, CancellationToken ct) =>
-                List(new RoomRef(RoomType.Conversation, conversationId), before, after, limit, user, policy, store, ct)).WithTags("Messages");
+                List(new RoomRef(RoomType.Conversation, conversationId), before, after, limit, user, policy, store, ct)).WithTags("Messages").Produces<MessagePage>();
         api.MapPost("/channels/{channelId:guid}/messages",
             (Guid channelId, SendMessageRequest body, IOptions<FilesOptions> files, [AsParameters] MessageDependencies deps, CancellationToken ct) =>
-                Send(new RoomRef(RoomType.Channel, channelId), body, files.Value, deps, ct)).WithTags("Messages");
+                Send(new RoomRef(RoomType.Channel, channelId), body, files.Value, deps, ct)).WithTags("Messages")
+            .Produces<MessageDto>(StatusCodes.Status201Created).Produces<MessageDto>();
         api.MapPost("/conversations/{conversationId:guid}/messages",
             (Guid conversationId, SendMessageRequest body, IOptions<FilesOptions> files, [AsParameters] MessageDependencies deps, CancellationToken ct) =>
-                Send(new RoomRef(RoomType.Conversation, conversationId), body, files.Value, deps, ct)).WithTags("Messages");
+                Send(new RoomRef(RoomType.Conversation, conversationId), body, files.Value, deps, ct)).WithTags("Messages")
+            .Produces<MessageDto>(StatusCodes.Status201Created).Produces<MessageDto>();
 
         var messages = api.MapGroup("/messages/{messageId:guid}").WithTags("Messages");
-        messages.MapGet("/", Get);
-        messages.MapGet("/replies", Replies);
-        messages.MapPatch("/", Edit);
-        messages.MapDelete("/", Delete);
-        messages.MapPut("/reactions/{emoji}", AddReaction);
-        messages.MapDelete("/reactions/{emoji}", RemoveReaction);
+        messages.MapGet("/", Get).Produces<MessageDto>();
+        messages.MapGet("/replies", Replies).Produces<MessageDto[]>();
+        messages.MapPatch("/", Edit).Produces<MessageDto>();
+        messages.MapDelete("/", Delete).Produces(StatusCodes.Status204NoContent);
+        messages.MapPut("/reactions/{emoji}", AddReaction).Produces<ReactionSummaryDto[]>();
+        messages.MapDelete("/reactions/{emoji}", RemoveReaction).Produces<ReactionSummaryDto[]>();
         return api;
     }
 

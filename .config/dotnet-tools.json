@@ -8,6 +8,13 @@
         "dotnet-ef"
       ],
       "rollForward": false
+    },
+    "swashbuckle.aspnetcore.cli": {
+      "version": "10.3.1",
+      "commands": [
+        "swagger"
+      ],
+      "rollForward": false
     }
   }
 }

@@ -15,14 +15,14 @@ public static class WorkspaceEndpoints
     public static RouteGroupBuilder MapWorkspaceEndpoints(this RouteGroupBuilder api)
     {
         var group = api.MapGroup("/workspaces").WithTags("Workspaces");
-        group.MapGet("/", ListMine);
-        group.MapPost("/", Create);
-        group.MapGet("/{workspaceId:guid}", Get);
-        group.MapPatch("/{workspaceId:guid}", Update);
-        group.MapGet("/{workspaceId:guid}/members", ListMembers);
-        group.MapPost("/{workspaceId:guid}/members", AddMember);
-        group.MapPatch("/{workspaceId:guid}/members/{userId}", ChangeRole);
-        group.MapDelete("/{workspaceId:guid}/members/{userId}", RemoveMember);
+        group.MapGet("/", ListMine).Produces<WorkspaceDto[]>();
+        group.MapPost("/", Create).Produces<WorkspaceDto>(StatusCodes.Status201Created);
+        group.MapGet("/{workspaceId:guid}", Get).Produces<WorkspaceDto>();
+        group.MapPatch("/{workspaceId:guid}", Update).Produces<WorkspaceDto>();
+        group.MapGet("/{workspaceId:guid}/members", ListMembers).Produces<WorkspaceMemberDto[]>();
+        group.MapPost("/{workspaceId:guid}/members", AddMember).Produces<WorkspaceMemberDto>(StatusCodes.Status201Created);
+        group.MapPatch("/{workspaceId:guid}/members/{userId}", ChangeRole).Produces<WorkspaceMemberDto>();
+        group.MapDelete("/{workspaceId:guid}/members/{userId}", RemoveMember).Produces(StatusCodes.Status204NoContent);
         return api;
     }
 
