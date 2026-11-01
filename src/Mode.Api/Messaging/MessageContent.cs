@@ -99,6 +99,21 @@ public static partial class MessageContent
     private static bool IsAllowedUrl(string? url) =>
         Uri.TryCreate(url?.Trim(), UriKind.Absolute, out var uri) && AllowedSchemes.Contains(uri.Scheme);
 
+    /// <summary>Turns user mentions into plain "@Name" text so a forwarded copy never notifies anyone again.</summary>
+    public static string FlattenMentions(string markdown, Func<string, string?> nameOf) =>
+        MentionPattern().Replace(markdown, match => match.Groups["id"].Success
+            ? "@" + EscapeText(nameOf(match.Groups["id"].Value) ?? "unknown user")
+            : match.Value);
+
+    public static IReadOnlyList<string> MentionedUserIds(string markdown) =>
+        MentionPattern().Matches(markdown).Where(m => m.Groups["id"].Success).Select(m => m.Groups["id"].Value).Distinct().ToList();
+
+    /// <summary>Backslash-escapes Markdown punctuation so names render as plain text.</summary>
+    public static string EscapeText(string text) => MarkdownPunctuation().Replace(text, @"\$1");
+
+    [GeneratedRegex(@"([\\`*_{}\[\]()#+\-.!|<>~@])")]
+    private static partial Regex MarkdownPunctuation();
+
     /// <summary>Replaces '&lt;' inside raw HTML so Markdown renders it as literal text.</summary>
     private static string EscapeHtml(string text, List<SourceSpan> spans)
     {

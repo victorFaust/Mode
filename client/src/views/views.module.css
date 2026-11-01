@@ -155,6 +155,65 @@
 .author { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .time { color: var(--m-text-muted); font-size: var(--m-text-caption); white-space: nowrap; }
 .edited { color: var(--m-text-muted); font-size: var(--m-text-caption); }
+.editedButton { border: none; background: transparent; padding: 0; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
+.editedButton:hover { color: var(--m-text); }
+.pinnedTag { display: inline-flex; align-items: center; gap: var(--m-space-1); color: var(--m-text-accent); font-size: var(--m-text-caption); font-weight: 600; }
+.forwardCard {
+  margin-top: var(--m-space-2);
+  padding: var(--m-space-3) var(--m-space-4);
+  border-left: 3px solid var(--m-border-strong);
+  border-radius: var(--m-radius-sm);
+  background: var(--m-surface);
+}
+.forwardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--m-space-3);
+  color: var(--m-text-muted);
+  font-size: var(--m-text-caption);
+  margin-bottom: var(--m-space-2);
+}
+.forwardMeta strong { color: var(--m-text); }
+.pinnedBar {
+  border-bottom: 1px solid var(--m-border);
+  background: var(--m-surface);
+  padding: var(--m-space-2) var(--m-space-5);
+  font-size: var(--m-text-small);
+}
+.pinnedRow { display: flex; align-items: center; gap: var(--m-space-3); color: var(--m-text-muted); }
+.pinnedRow > svg { color: var(--m-text-accent); flex: none; }
+.pinnedLatest, .pinnedToggle, .pinnedItemText, .hiddenToggle {
+  border: none;
+  background: transparent;
+  color: var(--m-text);
+  cursor: pointer;
+  text-align: left;
+  padding: var(--m-space-2);
+  border-radius: var(--m-radius-sm);
+}
+.pinnedLatest { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pinnedToggle { display: inline-flex; align-items: center; gap: var(--m-space-2); color: var(--m-text-muted); flex: none; }
+.pinnedToggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+.pinnedLatest:hover, .pinnedToggle:hover, .pinnedItemText:hover, .hiddenToggle:hover { background: var(--m-hover); }
+.pinnedList { list-style: none; margin: var(--m-space-2) 0 0; padding: 0; display: grid; gap: 1px; max-height: 240px; overflow-y: auto; }
+.pinnedItem { display: flex; align-items: center; gap: var(--m-space-2); }
+.pinnedItemText { flex: 1; min-width: 0; display: grid; overflow-wrap: anywhere; }
+.pinnedBy { color: var(--m-text-muted); font-size: var(--m-text-caption); }
+.listSectionLabel {
+  margin: var(--m-space-3) 0 var(--m-space-2);
+  padding: 0 var(--m-space-4);
+  font-size: var(--m-text-caption);
+  font-weight: 600;
+  color: var(--m-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.roomRow { position: relative; }
+.roomRow .roomItem { padding-right: 40px; }
+.roomMenu { position: absolute; right: var(--m-space-2); top: 50%; transform: translateY(-50%); opacity: 0; }
+.roomRow:hover .roomMenu, .roomRow:focus-within .roomMenu, .roomMenu:has([data-state="open"]) { opacity: 1; }
+.hiddenToggle { width: 100%; color: var(--m-text-muted); font-size: var(--m-text-small); padding: var(--m-space-2) var(--m-space-4); }
 .deleted { color: var(--m-text-muted); font-style: italic; }
 .failed {
   display: flex;

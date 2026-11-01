@@ -19,6 +19,7 @@ public static class RealtimeEvents
     public const string PresenceChanged = "presenceChanged";
     public const string ReadMarkerChanged = "readMarkerChanged";
     public const string ActivityRead = "activityRead";
+    public const string ConversationSettingsChanged = "conversationSettingsChanged";
 
     public static string UserGroup(string userId) => "user:" + userId;
 }
@@ -71,6 +72,10 @@ public sealed class RealtimeNotifier(IHubContext<ModeHub> hub)
 
     public Task ReadMarkerChangedAsync(string userId, RoomRef room, long lastReadSequence) =>
         User(userId).SendAsync(RealtimeEvents.ReadMarkerChanged, new ReadMarkerChangedEvent(room, lastReadSequence));
+
+    /// <summary>Keeps a user's pinned and hidden chats in step across their tabs and devices.</summary>
+    public Task ConversationSettingsChangedAsync(string userId, ConversationDto conversation) =>
+        User(userId).SendAsync(RealtimeEvents.ConversationSettingsChanged, conversation);
 
     private IClientProxy User(string userId) => hub.Clients.Group(RealtimeEvents.UserGroup(userId));
 }

@@ -6,6 +6,7 @@ using Mode.Api.Files;
 using Mode.Api.Messaging;
 using Mode.Api.Notifications;
 using Mode.Api.Realtime;
+using Mode.Domain.Directory;
 using Mode.Domain.Entities;
 using Mode.Infrastructure.Data;
 
@@ -13,6 +14,7 @@ namespace Mode.Api.Endpoints;
 
 public static class MessageEndpoints
 {
+    public const int MaxPinsPerRoom = 20;
     public static RouteGroupBuilder MapMessageEndpoints(this RouteGroupBuilder api)
     {
         api.MapGet("/channels/{channelId:guid}/messages",
@@ -29,13 +31,23 @@ public static class MessageEndpoints
             (Guid conversationId, SendMessageRequest body, IOptions<FilesOptions> files, [AsParameters] MessageDependencies deps, CancellationToken ct) =>
                 Send(new RoomRef(RoomType.Conversation, conversationId), body, files.Value, deps, ct)).WithTags("Messages")
             .Produces<MessageDto>(StatusCodes.Status201Created).Produces<MessageDto>();
+        api.MapGet("/channels/{channelId:guid}/pins",
+            (Guid channelId, CurrentUser user, AccessPolicy policy, MessageStore store, CancellationToken ct) =>
+                Pins(new RoomRef(RoomType.Channel, channelId), user, policy, store, ct)).WithTags("Messages").Produces<PinDto[]>();
+        api.MapGet("/conversations/{conversationId:guid}/pins",
+            (Guid conversationId, CurrentUser user, AccessPolicy policy, MessageStore store, CancellationToken ct) =>
+                Pins(new RoomRef(RoomType.Conversation, conversationId), user, policy, store, ct)).WithTags("Messages").Produces<PinDto[]>();
 
         var messages = api.MapGroup("/messages/{messageId:guid}").WithTags("Messages");
         messages.MapGet("/", Get).Produces<MessageDto>();
         messages.MapGet("/replies", Replies).Produces<MessageDto[]>();
+        messages.MapGet("/history", History).Produces<MessageVersionDto[]>();
         messages.MapPatch("/", Edit).Produces<MessageDto>();
         messages.MapDelete("/", Delete).Produces(StatusCodes.Status204NoContent);
         messages.MapPost("/restore", Restore).Produces<MessageDto>();
+        messages.MapPost("/forward", Forward).Produces<MessageDto>(StatusCodes.Status201Created).Produces<MessageDto>();
+        messages.MapPut("/pin", Pin).Produces<MessageDto>();
+        messages.MapDelete("/pin", Unpin).Produces<MessageDto>();
         messages.MapPut("/reactions/{emoji}", AddReaction).Produces<ReactionSummaryDto[]>();
         messages.MapDelete("/reactions/{emoji}", RemoveReaction).Produces<ReactionSummaryDto[]>();
         return api;
@@ -73,25 +85,144 @@ public static class MessageEndpoints
         return TypedResults.Ok(await store.RepliesAsync(messageId, after, limit ?? 50, ct));
     }
 
+    private static async Task<IResult> Pins(RoomRef room, CurrentUser user, AccessPolicy policy, MessageStore store, CancellationToken ct)
+    {
+        if (!(await policy.ForRoomAsync(user, room, ct)).Has(Permission.Read)) return Problems.NotFound();
+        return TypedResults.Ok(await store.PinsAsync(room, ct));
+    }
+
+    /// <summary>The author's own earlier versions. Text removed by a delete is never included.</summary>
+    private static async Task<IResult> History(Guid messageId, CurrentUser user, AccessPolicy policy, ModeDbContext db, CancellationToken ct)
+    {
+        var permission = await policy.ForMessageAsync(user, messageId, ct);
+        if (!permission.Has(Permission.Read)) return Problems.NotFound();
+        if (!permission.Has(Permission.ViewHistory)) return Problems.Forbidden("Only the author can see earlier versions.");
+
+        var message = await db.Messages.Where(m => m.Id == messageId).Select(m => new { m.BodyMarkdown, m.CreatedAt }).SingleAsync(ct);
+        var edits = await db.MessageEdits
+            .Where(e => e.MessageId == messageId && e.Kind == MessageChangeKind.Edit)
+            .OrderBy(e => e.ChangedAt).ThenBy(e => e.Id)
+            .Select(e => new { e.PreviousBodyMarkdown, e.ChangedAt })
+            .ToListAsync(ct);
+
+        var versions = new List<MessageVersionDto>(edits.Count + 1);
+        var writtenAt = message.CreatedAt;
+        foreach (var edit in edits)
+        {
+            versions.Add(new MessageVersionDto(edit.PreviousBodyMarkdown, writtenAt));
+            writtenAt = edit.ChangedAt;
+        }
+        versions.Add(new MessageVersionDto(message.BodyMarkdown, writtenAt));
+        return TypedResults.Ok(versions);
+    }
+
+    /// <summary>
+    /// Copies a message into another room the user can post in, under an optional note. Mentions in the copy become
+    /// plain names and files stay behind (listed by name), so forwarding never widens access or notifies anyone again.
+    /// </summary>
+    private static async Task<IResult> Forward(
+        Guid messageId, ForwardMessageRequest body, IUserDirectory directory, [AsParameters] MessageDependencies deps, CancellationToken ct)
+    {
+        var (user, db, policy, _, _, _, _, _) = deps;
+        if (!(await policy.ForMessageAsync(user, messageId, ct)).Has(Permission.Read)) return Problems.NotFound();
+        if (body.To is not { } to) return Problems.Invalid("to", "Choose a chat to forward to.");
+        var target = await policy.ForRoomAsync(user, to, ct);
+        if (!target.Has(Permission.Read)) return Problems.Invalid("to", "Choose a chat you belong to.");
+        if (!target.Has(Permission.Post)) return Problems.Forbidden("This channel is archived.");
+        if (body.Id is not { } id || id == Guid.Empty) return Problems.Invalid("id", "A client-generated message id is required.");
+
+        var note = new SanitizedMessage("", ParsedMentions.None);
+        if (!string.IsNullOrWhiteSpace(body.BodyMarkdown) && !MessageContent.TrySanitize(body.BodyMarkdown, out note, out var error))
+            return Problems.Invalid("bodyMarkdown", error);
+
+        var original = await db.Messages.AsNoTracking().SingleAsync(m => m.Id == messageId, ct);
+        if (original.DeletedAt is not null) return Problems.Conflict("The message was deleted.");
+
+        // Forwarding a forward without a note passes on the original card rather than nesting cards.
+        var snapshot = original.ForwardedBodyMarkdown is not null && original.BodyMarkdown.Trim().Length == 0
+            ? new ForwardSnapshot(original.ForwardedFromMessageId, original.ForwardedFromUserId!, original.ForwardedFromCreatedAt!.Value,
+                original.ForwardedBodyMarkdown)
+            : new ForwardSnapshot(original.Id, original.AuthorUserId, original.CreatedAt, await ForwardedCopyAsync(original, db, directory, ct));
+
+        var draft = new NewMessage(id, to, note.Markdown, note.Mentions, null, [], snapshot);
+        return await ExistingAsync(draft, deps, ct) ?? await InsertAsync(draft, deps, ct);
+    }
+
+    private static async Task<string> ForwardedCopyAsync(Message original, ModeDbContext db, IUserDirectory directory, CancellationToken ct)
+    {
+        var people = await directory.GetManyAsync(MessageContent.MentionedUserIds(original.BodyMarkdown), ct);
+        var copy = MessageContent.FlattenMentions(original.BodyMarkdown,
+            id => directory.TryNormalizeId(id, out var normalized) ? people.GetValueOrDefault(normalized)?.DisplayName : null);
+
+        var fileNames = await db.MessageAttachments
+            .Where(a => a.MessageId == original.Id)
+            .Select(a => a.FileAsset!.Name)
+            .ToListAsync(ct);
+        if (fileNames.Count > 0)
+            copy += "\n\n*Files not forwarded: " + string.Join(", ", fileNames.Select(MessageContent.EscapeText)) + "*";
+        return copy;
+    }
+
+    private static Task<IResult> Pin(Guid messageId, [AsParameters] MessageDependencies deps, CancellationToken ct) =>
+        ChangePin(messageId, pin: true, deps, ct);
+
+    private static Task<IResult> Unpin(Guid messageId, [AsParameters] MessageDependencies deps, CancellationToken ct) =>
+        ChangePin(messageId, pin: false, deps, ct);
+
+    private static async Task<IResult> ChangePin(Guid messageId, bool pin, MessageDependencies deps, CancellationToken ct)
+    {
+        var (user, db, policy, store, _, _, notifier, clock) = deps;
+        var permission = await policy.ForMessageAsync(user, messageId, ct);
+        if (!permission.Has(Permission.Read)) return Problems.NotFound();
+        if (!permission.Has(Permission.Pin)) return Problems.Forbidden("Deleted messages and archived channels can't be pinned.");
+
+        var current = await db.Messages.AsNoTracking().SingleAsync(m => m.Id == messageId, ct);
+        if (current.ParentMessageId is not null) return Problems.Invalid("messageId", "Only messages in the chat itself can be pinned, not thread replies.");
+        var room = RoomRef.Of(current);
+
+        await using (var transaction = await db.Database.BeginTransactionAsync(ct))
+        {
+            var sequence = await store.NextSequenceAsync(room, ct);
+            var message = await db.Messages.Include(m => m.Pin).SingleAsync(m => m.Id == messageId, ct);
+            if (message.DeletedAt is not null) return Problems.Conflict("The message was deleted.");
+            if (pin == (message.Pin is not null))
+            {
+                await transaction.RollbackAsync(ct);
+                return TypedResults.Ok(await store.GetDtoAsync(messageId, ct));
+            }
+
+            if (pin)
+            {
+                if (await store.InRoom(room).CountAsync(m => m.Pin != null, ct) >= MaxPinsPerRoom)
+                    return Problems.Conflict($"At most {MaxPinsPerRoom} messages can be pinned. Unpin one first.");
+                db.PinnedMessages.Add(new PinnedMessage { MessageId = messageId, PinnedByUserId = user.Id, PinnedAt = clock.GetUtcNow() });
+            }
+            else
+            {
+                db.PinnedMessages.Remove(message.Pin!);
+            }
+            message.UpdatedSequence = sequence;
+
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+        }
+
+        var dto = await store.GetDtoAsync(messageId, ct);
+        await notifier.MessageEditedAsync(dto);
+        return TypedResults.Ok(dto);
+    }
+
     private static async Task<IResult> Send(RoomRef room, SendMessageRequest body, FilesOptions fileOptions, MessageDependencies deps, CancellationToken ct)
     {
-        var (user, db, policy, store, mentions, notifications, notifier, clock) = deps;
+        var (user, db, policy, store, _, _, _, _) = deps;
         var permission = await policy.ForRoomAsync(user, room, ct);
         if (!permission.Has(Permission.Read)) return Problems.NotFound();
         if (!permission.Has(Permission.Post)) return Problems.Forbidden("This channel is archived.");
         if (body.Id is not { } id || id == Guid.Empty) return Problems.Invalid("id", "A client-generated message id is required.");
         if (!MessageContent.TrySanitize(body.BodyMarkdown, out var content, out var error)) return Problems.Invalid("bodyMarkdown", error);
 
-        bool IsRetryOf(Message existing) =>
-            existing.AuthorUserId == user.Id && RoomRef.Of(existing) == room && existing.ParentMessageId == body.ParentMessageId &&
-            (existing.EditedAt is not null || existing.DeletedAt is not null || existing.BodyMarkdown == content.Markdown);
-
-        async Task<IResult> ExistingAsync(Message existing) => IsRetryOf(existing)
-            ? TypedResults.Ok(await store.GetDtoAsync(existing.Id, ct))
-            : Problems.Conflict("This message id is already in use.");
-
-        var existing = await db.Messages.AsNoTracking().SingleOrDefaultAsync(m => m.Id == id, ct);
-        if (existing is not null) return await ExistingAsync(existing);
+        var draft = new NewMessage(id, room, content.Markdown, content.Mentions, body.ParentMessageId, [], null);
+        if (await ExistingAsync(draft, deps, ct) is { } existing) return existing;
 
         if (body.ParentMessageId is { } parentId)
         {
@@ -111,6 +242,38 @@ public static class MessageEndpoints
             .ToListAsync(ct);
         if (files.Count != fileIds.Count) return Problems.Invalid("fileIds", "Attach only files uploaded to this channel or chat.");
 
+        return await InsertAsync(draft with { Files = files }, deps, ct);
+    }
+
+    /// <summary>A message about to be created, by <see cref="Send"/> or <see cref="Forward"/>.</summary>
+    private sealed record NewMessage(
+        Guid Id, RoomRef Room, string BodyMarkdown, ParsedMentions Mentions, Guid? ParentMessageId,
+        IReadOnlyList<AttachmentTarget> Files, ForwardSnapshot? Forward);
+
+    private sealed record ForwardSnapshot(Guid? MessageId, string UserId, DateTimeOffset CreatedAt, string BodyMarkdown);
+
+    /// <summary>
+    /// Handles a client retrying with an id that is already used: the same request gets the stored message back,
+    /// anything else is a conflict. Returns null when the id is free.
+    /// </summary>
+    private static async Task<IResult?> ExistingAsync(NewMessage draft, MessageDependencies deps, CancellationToken ct)
+    {
+        var existing = await deps.Db.Messages.AsNoTracking().SingleOrDefaultAsync(m => m.Id == draft.Id, ct);
+        if (existing is null) return null;
+
+        var isRetry = existing.AuthorUserId == deps.User.Id && RoomRef.Of(existing) == draft.Room &&
+            existing.ParentMessageId == draft.ParentMessageId &&
+            existing.ForwardedFromMessageId == draft.Forward?.MessageId &&
+            (existing.EditedAt is not null || existing.DeletedAt is not null || existing.BodyMarkdown == draft.BodyMarkdown);
+        return isRetry
+            ? TypedResults.Ok(await deps.Store.GetDtoAsync(existing.Id, ct))
+            : Problems.Conflict("This message id is already in use.");
+    }
+
+    private static async Task<IResult> InsertAsync(NewMessage draft, MessageDependencies deps, CancellationToken ct)
+    {
+        var (user, db, _, store, mentions, notifications, notifier, clock) = deps;
+        var (id, room) = (draft.Id, draft.Room);
         var workspaceId = room.Type == RoomType.Channel
             ? await db.Channels.Where(c => c.Id == room.Id).Select(c => (Guid?)c.WorkspaceId).SingleAsync(ct)
             : null;
@@ -125,22 +288,26 @@ public static class MessageEndpoints
                 Id = id,
                 ChannelId = room.Type == RoomType.Channel ? room.Id : null,
                 ConversationId = room.Type == RoomType.Conversation ? room.Id : null,
-                ParentMessageId = body.ParentMessageId,
+                ParentMessageId = draft.ParentMessageId,
                 Sequence = sequence,
                 UpdatedSequence = sequence,
                 AuthorUserId = user.Id,
-                BodyMarkdown = content.Markdown,
+                BodyMarkdown = draft.BodyMarkdown,
                 CreatedAt = now,
+                ForwardedBodyMarkdown = draft.Forward?.BodyMarkdown,
+                ForwardedFromMessageId = draft.Forward?.MessageId,
+                ForwardedFromUserId = draft.Forward?.UserId,
+                ForwardedFromCreatedAt = draft.Forward?.CreatedAt,
             };
-            foreach (var file in files)
+            foreach (var file in draft.Files)
                 message.Attachments.Add(new MessageAttachment { FileAssetId = file.Id, VersionNo = file.CurrentVersionNo });
             db.Messages.Add(message);
 
-            var requests = await mentions.ApplyAsync(message, room, workspaceId, content.Mentions, ct);
+            var requests = await mentions.ApplyAsync(message, room, workspaceId, draft.Mentions, ct);
             NotificationRequest Request(string recipient, ActivityType type) =>
                 new(recipient, type, user.Id, workspaceId, message.ChannelId, message.ConversationId, id);
 
-            if (body.ParentMessageId is { } replyTo)
+            if (draft.ParentMessageId is { } replyTo)
             {
                 var parent = await db.Messages.SingleAsync(m => m.Id == replyTo, ct);
                 parent.ReplyCount++;
@@ -149,8 +316,12 @@ public static class MessageEndpoints
                 requests.Add(Request(parent.AuthorUserId, ActivityType.Reply));
             }
             if (room.Type == RoomType.Conversation)
+            {
                 requests.AddRange((await db.ConversationMembers.Where(m => m.ConversationId == room.Id).Select(m => m.UserId).ToListAsync(ct))
                     .Select(member => Request(member, ActivityType.ChatMessage)));
+                await db.ConversationMembers.Where(m => m.ConversationId == room.Id && m.IsHidden)
+                    .ExecuteUpdateAsync(s => s.SetProperty(m => m.IsHidden, false), ct);
+            }
 
             activity = await notifications.PrepareAsync(requests, ct);
             try
@@ -163,7 +334,7 @@ public static class MessageEndpoints
                 // A concurrent retry with the same id won the race.
                 await transaction.RollbackAsync(ct);
                 db.ChangeTracker.Clear();
-                return await ExistingAsync(await db.Messages.AsNoTracking().SingleAsync(m => m.Id == id, ct));
+                return (await ExistingAsync(draft, deps, ct))!;
             }
         }
 
@@ -243,6 +414,7 @@ public static class MessageEndpoints
             message.DeletedAt = now;
             message.DeletedByUserId = user.Id;
             message.UpdatedSequence = sequence;
+            await db.PinnedMessages.Where(p => p.MessageId == messageId).ExecuteDeleteAsync(ct);
 
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);

@@ -1,9 +1,10 @@
-import { ArrowLeft, Bell, BellOff, FileText, Hash, Lock, PanelLeftOpen, Users } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, Bell, BellOff, ChevronDown, FileText, Hash, Lock, PanelLeftOpen, Pin, PinOff, Users } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { ok, roomKey, type RoomRef, type User } from "../api/client";
 import { useController, useMode } from "../app/context";
 import { IconButton } from "../components/ui";
+import { previewText } from "../lib/mentions";
 import { displayName } from "../store/controller";
 import { Composer, type ComposerHandle } from "./Composer";
 import { MessageList } from "./MessageList";
@@ -58,6 +59,54 @@ export function useRoomInfo(room: RoomRef) {
   }));
 }
 
+/** The latest pin, with the full list one click away; selecting a pin scrolls to the message. */
+function PinnedBar({ room, canPost }: { room: RoomRef; canPost: boolean }) {
+  const controller = useController();
+  const { pins, users } = useMode(useShallow((s) => ({ pins: s.pins[roomKey(room)], users: s.users })));
+  const [open, setOpen] = useState(false);
+  const listId = useId();
+  if (!pins?.length) return null;
+
+  const text = (pin: (typeof pins)[number]) =>
+    previewText(pin.message.bodyMarkdown || pin.message.forwarded?.bodyMarkdown || "", users) || "(no text)";
+  const go = (pin: (typeof pins)[number]) => {
+    setOpen(false);
+    void controller.revealMessage(room, pin.message.id, pin.message);
+  };
+
+  return (
+    <div className={styles.pinnedBar} aria-label="Pinned messages" role="region">
+      <div className={styles.pinnedRow}>
+        <Pin size={14} aria-hidden />
+        <button type="button" className={styles.pinnedLatest} onClick={() => go(pins[0])}>
+          <span className="m-visually-hidden">Pinned: </span>{text(pins[0])}
+        </button>
+        <button type="button" className={styles.pinnedToggle} aria-expanded={open} aria-controls={listId} onClick={() => setOpen(!open)}>
+          {pins.length} pinned <ChevronDown size={14} aria-hidden />
+        </button>
+      </div>
+      {open && (
+        <ul id={listId} className={styles.pinnedList}>
+          {pins.map((pin) => (
+            <li key={pin.message.id} className={styles.pinnedItem}>
+              <button type="button" className={styles.pinnedItemText} onClick={() => go(pin)}>
+                <strong>{pin.message.author.displayName}</strong> {text(pin)}
+                <span className={styles.pinnedBy}>Pinned by {pin.pinnedBy.displayName}</span>
+              </button>
+              {canPost && (
+                <IconButton label={`Unpin message from ${pin.message.author.displayName}`} size="small"
+                  onClick={() => void controller.setPinned(pin.message, false).catch((e: Error) => controller.toastError(e.message))}>
+                  <PinOff size={14} aria-hidden />
+                </IconButton>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function RoomPane({ room }: { room: RoomRef }) {
   const controller = useController();
   const info = useRoomInfo(room);
@@ -109,6 +158,8 @@ export function RoomPane({ room }: { room: RoomRef }) {
           </IconButton>
         </div>
       </header>
+
+      <PinnedBar room={room} canPost={info.canPost} />
 
       <MessageList room={room} title={info.name} canPost={info.canPost} canManage={info.canManage} />
 

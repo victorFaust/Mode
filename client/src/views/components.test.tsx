@@ -65,7 +65,9 @@ describe("command bar", () => {
   test("filters chats as you type and jumps to the chosen one", async () => {
     const user = userEvent.setup();
     const members = [{ id: "u-ada", displayName: "Ada Okafor", isActive: true }];
-    const chat = (id: string, name: string) => ({ id, type: "Group" as const, name, members, lastSequence: 0, createdAt: "2026-11-01T00:00:00Z" });
+    const chat = (id: string, name: string) => ({
+      id, type: "Group" as const, name, members, lastSequence: 0, createdAt: "2026-11-01T00:00:00Z", isPinned: false, isHidden: false,
+    });
     const { store } = renderMode(<CommandBar />, { conversations: [chat("k1", "Treasury desk"), chat("k2", "Deals team")], commandBarOpen: true });
 
     await user.type(await screen.findByPlaceholderText(/Jump to a/), "dea");

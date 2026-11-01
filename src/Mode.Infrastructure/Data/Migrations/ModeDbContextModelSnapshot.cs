@@ -267,6 +267,12 @@ namespace Mode.Infrastructure.Data.Migrations
                     b.Property<DateTimeOffset>("AddedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool>("IsHidden")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsPinned")
+                        .HasColumnType("boolean");
+
                     b.HasKey("ConversationId", "UserId");
 
                     b.HasIndex("UserId");
@@ -530,6 +536,19 @@ namespace Mode.Infrastructure.Data.Migrations
                     b.Property<DateTimeOffset?>("EditedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("ForwardedBodyMarkdown")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("ForwardedFromCreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ForwardedFromMessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ForwardedFromUserId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<DateTimeOffset?>("LastReplyAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -542,7 +561,7 @@ namespace Mode.Infrastructure.Data.Migrations
                     b.Property<NpgsqlTsVector>("SearchVector")
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("tsvector")
-                        .HasComputedColumnSql("to_tsvector('english', \"BodyMarkdown\")", true);
+                        .HasComputedColumnSql("to_tsvector('english', \"BodyMarkdown\" || ' ' || coalesce(\"ForwardedBodyMarkdown\", ''))", true);
 
                     b.Property<long>("Sequence")
                         .HasColumnType("bigint");
@@ -551,6 +570,8 @@ namespace Mode.Infrastructure.Data.Migrations
                         .HasColumnType("bigint");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ForwardedFromMessageId");
 
                     b.HasIndex("ParentMessageId");
 
@@ -625,6 +646,24 @@ namespace Mode.Infrastructure.Data.Migrations
                     b.HasIndex("MessageId");
 
                     b.ToTable("MessageEdits");
+                });
+
+            modelBuilder.Entity("Mode.Domain.Entities.PinnedMessage", b =>
+                {
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("PinnedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PinnedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("MessageId");
+
+                    b.ToTable("PinnedMessages");
                 });
 
             modelBuilder.Entity("Mode.Domain.Entities.PushSubscription", b =>
@@ -989,6 +1028,11 @@ namespace Mode.Infrastructure.Data.Migrations
                         .HasForeignKey("ConversationId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("Mode.Domain.Entities.Message", null)
+                        .WithMany()
+                        .HasForeignKey("ForwardedFromMessageId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Mode.Domain.Entities.Message", "Parent")
                         .WithMany()
                         .HasForeignKey("ParentMessageId")
@@ -1023,6 +1067,17 @@ namespace Mode.Infrastructure.Data.Migrations
                     b.HasOne("Mode.Domain.Entities.Message", "Message")
                         .WithMany("Edits")
                         .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Message");
+                });
+
+            modelBuilder.Entity("Mode.Domain.Entities.PinnedMessage", b =>
+                {
+                    b.HasOne("Mode.Domain.Entities.Message", "Message")
+                        .WithOne("Pin")
+                        .HasForeignKey("Mode.Domain.Entities.PinnedMessage", "MessageId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -1099,6 +1154,8 @@ namespace Mode.Infrastructure.Data.Migrations
                     b.Navigation("Edits");
 
                     b.Navigation("Mentions");
+
+                    b.Navigation("Pin");
 
                     b.Navigation("Reactions");
                 });

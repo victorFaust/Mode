@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { createApi } from "./api/client";
 import { AppShell } from "./app/AppShell";
 import { ModeProvider } from "./app/context";
-import { ModeController, type Platform } from "./store/controller";
+import { linkedMessageId, ModeController, type Platform } from "./store/controller";
 import { createModeStore } from "./store/store";
 import "./theme/tokens.css";
 
@@ -23,10 +23,17 @@ export interface MountOptions {
   onUnauthorized?: () => void;
   /** Service worker script for Web Push, served from the host's origin (see public/mode-sw.js). */
   serviceWorkerUrl?: string;
+  /**
+   * Builds the link that "Copy link" puts on the clipboard. When the host provides this, it must call
+   * openMessage(id) when such a link is followed. By default links use "#mode-message=<id>" on the current page.
+   */
+  messageLink?: (messageId: string) => string;
 }
 
 export interface ModeInstance {
   setTheme(theme: ModeTheme): void;
+  /** Opens a message if the signed-in user can read it. */
+  openMessage(messageId: string): void;
   unmount(): void;
 }
 
@@ -35,7 +42,7 @@ function resolveTheme(mode: ModeTheme["mode"]): "light" | "dark" {
   return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-function Root({ controller, theme }: { controller: ModeController; theme: ModeTheme }) {
+function Root({ controller, theme, hashLinks }: { controller: ModeController; theme: ModeTheme; hashLinks: boolean }) {
   const [portal, setPortal] = useState<HTMLElement | null>(null);
   const [resolved, setResolved] = useState(() => resolveTheme(theme.mode));
 
@@ -49,9 +56,17 @@ function Root({ controller, theme }: { controller: ModeController; theme: ModeTh
   }, [theme.mode]);
 
   useEffect(() => {
-    void controller.bootstrap();
-    return () => void controller.stop();
-  }, [controller]);
+    const openLinked = () => {
+      const id = hashLinks ? linkedMessageId(window.location.hash) : null;
+      if (id && controller.store.getState().bootstrapped) void controller.openMessage(id);
+    };
+    void controller.bootstrap().then(openLinked);
+    window.addEventListener("hashchange", openLinked);
+    return () => {
+      window.removeEventListener("hashchange", openLinked);
+      void controller.stop();
+    };
+  }, [controller, hashLinks]);
 
   return (
     <div data-mode-root data-theme={resolved} style={{ height: "100%", position: "relative", ...(theme.accent ? { ["--m-accent" as string]: theme.accent } : {}) }}>
@@ -68,6 +83,7 @@ export function mountMode(element: HTMLElement, options: MountOptions): ModeInst
   const api = createApi({ baseUrl: (options.apiBaseUrl ?? "").replace(/\/$/, ""), getToken: options.getToken, onUnauthorized: options.onUnauthorized });
   const platform: Platform = {
     serviceWorkerUrl: options.serviceWorkerUrl,
+    messageLink: options.messageLink,
     notify(title, body, onClick) {
       if (!("Notification" in window) || Notification.permission !== "granted") return false;
       const notification = new Notification(title, { body, tag: "mode" });
@@ -82,12 +98,15 @@ export function mountMode(element: HTMLElement, options: MountOptions): ModeInst
   const controller = new ModeController(api, createModeStore(), options.getToken, platform);
   const root = createRoot(element);
   let theme: ModeTheme = options.theme ?? { mode: "light" };
-  const render = () => root.render(<Root controller={controller} theme={theme} />);
+  const render = () => root.render(<Root controller={controller} theme={theme} hashLinks={!options.messageLink} />);
   render();
   return {
     setTheme(next) {
       theme = next;
       render();
+    },
+    openMessage(messageId) {
+      void controller.openMessage(messageId);
     },
     unmount() {
       root.unmount();

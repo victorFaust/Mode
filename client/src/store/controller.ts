@@ -1,5 +1,6 @@
 import {
-  ok, roomKey, type Api, type Channel, type Conversation, type FileDto, type Message, type PresenceStatus, type RoomRef, type User,
+  ok, roomKey, type Api, type Channel, type Conversation, type FileDto, type Message, type MessageVersion, type PresenceStatus,
+  type RoomRef, type User,
 } from "../api/client";
 import { RealtimeService, type RealtimeHandlers } from "../realtime/realtime";
 import { features } from "../app/features";
@@ -20,6 +21,15 @@ export interface Platform {
   notify?(title: string, body: string, onClick: () => void): boolean;
   /** Service worker script for Web Push, served from the host page's origin. */
   serviceWorkerUrl?: string;
+  /** Builds a shareable link to a message; the host then calls openMessage when it is followed. */
+  messageLink?(messageId: string): string;
+}
+
+const MESSAGE_HASH = /^#mode-message=([0-9a-f-]{36})$/i;
+
+/** The message id in a default "#mode-message=…" link, if the page was opened with one. */
+export function linkedMessageId(hash: string): string | null {
+  return MESSAGE_HASH.exec(hash)?.[1] ?? null;
 }
 
 export function displayName(conversation: Conversation, meId: string | undefined): string {
@@ -109,14 +119,19 @@ export class ModeController {
       this.set((s) => applyMessage(s, message));
       this.countUnread(room, message);
       this.clearTyping(room, message.author.id);
+      if (room.type === "Conversation" && this.state.conversations.some((c) => c.id === room.id && c.isHidden)) {
+        this.set((s) => ({ conversations: s.conversations.map((c) => (c.id === room.id ? { ...c, isHidden: false } : c)) }));
+      }
     },
     messageEdited: ({ room, sequence, message }) => {
       this.checkSequence(room, sequence);
       this.set((s) => applyMessage(s, message));
+      this.refreshPinsFor(room, message.id, message.isPinned);
     },
     messageDeleted: ({ room, sequence, messageId }) => {
       this.checkSequence(room, sequence);
       this.set((s) => applyDeleted(s, room, messageId, sequence));
+      this.refreshPinsFor(room, messageId, false);
     },
     reactionChanged: ({ room, sequence, messageId, reactions }) => {
       this.checkSequence(room, sequence);
@@ -140,6 +155,7 @@ export class ModeController {
       this.showBanner(banner);
     },
     readMarkerChanged: () => this.refreshUnreadSoon(),
+    conversationSettingsChanged: (conversation) => this.applyConversation(conversation),
     presenceChanged: (presence) => this.set((s) => ({ presence: { ...s.presence, [presence.userId]: presence } })),
     roomAccessRevoked: ({ room }) => this.removeRoom(room, "You no longer have access to this conversation."),
     fileUpdated: ({ room, file }) => {
@@ -290,6 +306,7 @@ export class ModeController {
     const current = roomOf(this.state, room);
     if (!current.loaded && !current.loading) void this.loadRoom(room);
     else this.set((s) => patchRoom(s, room, (r) => ({ ...r, lastReadOnOpen: s.unread[roomKey(room)]?.lastReadSequence ?? null })));
+    if (!(roomKey(room) in this.state.pins)) void this.loadPins(room);
     const conversation = room.type === "Conversation" ? this.state.conversations.find((c) => c.id === room.id) : undefined;
     if (conversation) void this.realtime.subscribePresence(conversation.members.map((m) => m.id));
   }
@@ -329,12 +346,61 @@ export class ModeController {
     }
   }
 
-  /** Opens a message: top-level messages are already in the room; replies open their thread. */
-  async revealMessage(room: RoomRef, messageId: string): Promise<void> {
+  /** Opens a message: top-level messages are scrolled to (loading older pages if needed); replies open their thread. */
+  async revealMessage(room: RoomRef, messageId: string, known?: Message): Promise<void> {
     if (!this.isOpen(room)) this.openRoom(room);
+    const message = known ?? await ok(this.api.GET("/api/v1/messages/{messageId}", { params: { path: { messageId } } })).catch(() => null);
+    if (!message) return;
+    if (message.parentMessageId) {
+      this.setSide({ kind: "thread", messageId: message.parentMessageId });
+      return;
+    }
+    await this.loadBackTo(room, message.sequence);
+    this.set({ reveal: message.id });
+  }
+
+  clearReveal(): void {
+    this.set({ reveal: null });
+  }
+
+  /** Loads older pages until the given sequence is on screen, up to a limit. */
+  private async loadBackTo(room: RoomRef, sequence: number): Promise<void> {
+    for (let attempt = 0; attempt < 60; attempt++) {
+      const current = roomOf(this.state, room);
+      if (current.loading) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        continue;
+      }
+      if (!current.loaded) {
+        await this.loadRoom(room);
+        continue;
+      }
+      const oldest = current.items.find((m) => !m.pending);
+      if (!oldest || oldest.sequence <= sequence || !current.hasOlder) return;
+      await this.loadOlder(room);
+    }
+  }
+
+  /** Follows a message link. People who can't read the message learn nothing about it. */
+  async openMessage(messageId: string): Promise<void> {
     const message = await ok(this.api.GET("/api/v1/messages/{messageId}", { params: { path: { messageId } } })).catch(() => null);
-    if (message?.parentMessageId) this.setSide({ kind: "thread", messageId: message.parentMessageId });
-    else if (message) window.dispatchEvent(new CustomEvent("mode:reveal", { detail: message.id }));
+    if (!message) {
+      this.showBanner({
+        id: `link-${messageId}`, title: "Can't open that message",
+        body: "It may have been deleted, or it's in a chat you're not part of.", room: null, messageId: null,
+      });
+      return;
+    }
+    if (message.room.type === "Conversation" && !this.state.conversations.some((c) => c.id === message.room.id)) {
+      await this.bootstrapConversations().catch(() => undefined);
+    }
+    await this.revealMessage(message.room, message.id, message);
+  }
+
+  messageLink(messageId: string): string {
+    if (this.platform.messageLink) return this.platform.messageLink(messageId);
+    const { origin, pathname, search } = window.location;
+    return `${origin}${pathname}${search}#mode-message=${messageId}`;
   }
 
   private removeRoom(room: RoomRef, notice: string): void {
@@ -459,6 +525,7 @@ export class ModeController {
       reactions: [],
       mentions: [],
       files: [],
+      isPinned: false,
       pending: { state: "sending", send },
     };
     this.set((s) => applyMessage(s, local));
@@ -522,6 +589,47 @@ export class ModeController {
 
   startEdit(messageId: string | null): void {
     this.set({ editingMessageId: messageId });
+  }
+
+  // ---- Pins, forwarding and history ----------------------------------------------------------
+
+  async loadPins(room: RoomRef): Promise<void> {
+    const pins = await ok(room.type === "Channel"
+      ? this.api.GET("/api/v1/channels/{channelId}/pins", { params: { path: { channelId: room.id } } })
+      : this.api.GET("/api/v1/conversations/{conversationId}/pins", { params: { path: { conversationId: room.id } } })).catch(() => null);
+    if (pins) this.set((s) => ({ pins: { ...s.pins, [roomKey(room)]: pins } }));
+  }
+
+  async setPinned(message: Message, pinned: boolean): Promise<void> {
+    const params = { params: { path: { messageId: message.id } } };
+    const saved = await ok(pinned
+      ? this.api.PUT("/api/v1/messages/{messageId}/pin", params)
+      : this.api.DELETE("/api/v1/messages/{messageId}/pin", params));
+    this.set((s) => applyMessage(s, saved));
+    await this.loadPins(message.room);
+  }
+
+  /** Pins hold a copy of the message, so reload them when a pinned message changes. */
+  private refreshPinsFor(room: RoomRef, messageId: string, isPinned: boolean): void {
+    const pins = this.state.pins[roomKey(room)];
+    if (pins && (isPinned || pins.some((p) => p.message.id === messageId))) void this.loadPins(room);
+  }
+
+  async forward(message: Message, to: RoomRef, note: string): Promise<void> {
+    const saved = await ok(this.api.POST("/api/v1/messages/{messageId}/forward", {
+      params: { path: { messageId: message.id } },
+      body: { id: crypto.randomUUID(), to, bodyMarkdown: note.trim() || null },
+    }));
+    this.set((s) => applyMessage(s, saved));
+    const conversation = this.state.conversations.find((c) => c.id === to.id);
+    this.showBanner({
+      id: `forwarded-${saved.id}`, title: "Message forwarded",
+      body: conversation ? `Sent to ${displayName(conversation, this.state.me?.id)}.` : "Sent.", room: to, messageId: saved.id,
+    });
+  }
+
+  history(message: Message): Promise<MessageVersion[]> {
+    return ok(this.api.GET("/api/v1/messages/{messageId}/history", { params: { path: { messageId: message.id } } }));
   }
 
   /** Up arrow in an empty composer edits your most recent message there, as in Teams. */
@@ -652,6 +760,22 @@ export class ModeController {
     const conversations = await ok(this.api.GET("/api/v1/conversations"));
     this.set({ conversations });
     this.rememberUsers(conversations.flatMap((c) => c.members));
+  }
+
+  /** Pin or hide a chat in your own list. */
+  async setChatSettings(conversationId: string, settings: { isPinned?: boolean; isHidden?: boolean }): Promise<void> {
+    const updated = await ok(this.api.PUT("/api/v1/conversations/{conversationId}/settings", {
+      params: { path: { conversationId } }, body: settings,
+    }));
+    this.applyConversation(updated);
+  }
+
+  private applyConversation(conversation: Conversation): void {
+    this.set((s) => ({
+      conversations: s.conversations.some((c) => c.id === conversation.id)
+        ? s.conversations.map((c) => (c.id === conversation.id ? conversation : c))
+        : [conversation, ...s.conversations],
+    }));
   }
 
   private async joinNew(rooms: RoomRef[]): Promise<void> {

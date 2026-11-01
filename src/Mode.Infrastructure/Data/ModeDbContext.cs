@@ -17,6 +17,7 @@ public sealed class ModeDbContext(DbContextOptions<ModeDbContext> options) : DbC
     public DbSet<MessageEdit> MessageEdits => Set<MessageEdit>();
     public DbSet<Reaction> Reactions => Set<Reaction>();
     public DbSet<Mention> Mentions => Set<Mention>();
+    public DbSet<PinnedMessage> PinnedMessages => Set<PinnedMessage>();
     public DbSet<FileAsset> FileAssets => Set<FileAsset>();
     public DbSet<FileVersion> FileVersions => Set<FileVersion>();
     public DbSet<UploadSession> UploadSessions => Set<UploadSession>();

@@ -81,11 +81,24 @@ public sealed class MessageStore(ModeDbContext db, IUserDirectory directory, Fil
         Summarize(await db.Reactions.Where(r => r.MessageId == messageId).ToListAsync(ct));
 
     private static IQueryable<Message> WithDetails(IQueryable<Message> query) =>
-        query.Include(m => m.Reactions).Include(m => m.Mentions).AsSplitQuery().AsNoTracking();
+        query.Include(m => m.Reactions).Include(m => m.Mentions).Include(m => m.Pin).AsSplitQuery().AsNoTracking();
+
+    public async Task<IReadOnlyList<PinDto>> PinsAsync(RoomRef room, CancellationToken ct)
+    {
+        var messages = await WithDetails(InRoom(room).Where(m => m.Pin != null)).ToListAsync(ct);
+        var dtos = await ToDtosAsync(messages, ct);
+        var pinners = await directory.GetManyAsync(messages.Select(m => m.Pin!.PinnedByUserId).Distinct(), ct);
+        return messages.Zip(dtos)
+            .Select(x => new PinDto(x.Second, WorkspaceEndpoints.ToUserDto(pinners, x.First.Pin!.PinnedByUserId), x.First.Pin!.PinnedAt))
+            .OrderByDescending(p => p.PinnedAt)
+            .ToList();
+    }
 
     private async Task<IReadOnlyList<MessageDto>> ToDtosAsync(IReadOnlyList<Message> messages, CancellationToken ct)
     {
-        var authors = await directory.GetManyAsync(messages.Select(m => m.AuthorUserId).Distinct(), ct);
+        var people = messages.Select(m => m.AuthorUserId)
+            .Concat(messages.Where(m => m.ForwardedFromUserId is not null).Select(m => m.ForwardedFromUserId!));
+        var authors = await directory.GetManyAsync(people.Distinct(), ct);
         var attachments = await files.AttachmentsAsync(messages.Where(m => m.DeletedAt is null).Select(m => m.Id).ToList(), ct);
         return messages.Select(m =>
         {
@@ -97,7 +110,11 @@ public sealed class MessageStore(ModeDbContext db, IUserDirectory directory, Fil
                 m.CreatedAt, m.EditedAt, deleted, deleted && m.DeletedByUserId == m.AuthorUserId, m.ReplyCount, m.LastReplyAt,
                 deleted ? [] : Summarize(m.Reactions),
                 deleted ? [] : m.Mentions.Select(x => new MentionDto(x.Kind, x.TargetUserId)).ToList(),
-                attachments.GetValueOrDefault(m.Id) ?? []);
+                attachments.GetValueOrDefault(m.Id) ?? [],
+                m.Pin is not null,
+                deleted || m.ForwardedBodyMarkdown is null ? null : new ForwardDto(
+                    m.ForwardedFromMessageId, WorkspaceEndpoints.ToUserDto(authors, m.ForwardedFromUserId!),
+                    m.ForwardedFromCreatedAt!.Value, m.ForwardedBodyMarkdown));
         }).ToList();
     }
 

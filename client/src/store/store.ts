@@ -1,6 +1,6 @@
 import { createStore } from "zustand/vanilla";
 import type {
-  Channel, Conversation, Message, Presence, RoomRef, RoomUnread, User, Workspace,
+  Channel, Conversation, Message, Pin, Presence, RoomRef, RoomUnread, User, Workspace,
 } from "../api/client";
 
 export type Section = "activity" | "chat" | "channels" | "files";
@@ -74,6 +74,10 @@ export interface ModeState {
   listOpen: boolean;
   /** The message being edited in place, if any. */
   editingMessageId: string | null;
+  /** Pinned messages per room, newest pin first; missing until loaded. */
+  pins: Record<string, Pin[]>;
+  /** A loaded top-level message the message list should scroll to and highlight. */
+  reveal: string | null;
 }
 
 export const initialState = (): ModeState => ({
@@ -102,6 +106,8 @@ export const initialState = (): ModeState => ({
   commandBarOpen: false,
   listOpen: true,
   editingMessageId: null,
+  pins: {},
+  reveal: null,
 });
 
 export const createModeStore = (initial?: Partial<ModeState>) =>
