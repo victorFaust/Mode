@@ -219,7 +219,9 @@ public static class MessageEndpoints
         if (!permission.Has(Permission.Read)) return Problems.NotFound();
         if (!permission.Has(Permission.Post)) return Problems.Forbidden("This channel is archived.");
         if (body.Id is not { } id || id == Guid.Empty) return Problems.Invalid("id", "A client-generated message id is required.");
-        if (!MessageContent.TrySanitize(body.BodyMarkdown, out var content, out var error)) return Problems.Invalid("bodyMarkdown", error);
+        var content = new SanitizedMessage("", ParsedMentions.None);
+        var filesOnly = string.IsNullOrWhiteSpace(body.BodyMarkdown) && body.FileIds is { Count: > 0 };
+        if (!filesOnly && !MessageContent.TrySanitize(body.BodyMarkdown, out content, out var error)) return Problems.Invalid("bodyMarkdown", error);
 
         var draft = new NewMessage(id, room, content.Markdown, content.Mentions, body.ParentMessageId, [], null);
         if (await ExistingAsync(draft, deps, ct) is { } existing) return existing;

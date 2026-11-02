@@ -33,7 +33,8 @@ public sealed partial class NotificationContent(ModeDbContext db, IUserDirectory
         var groups = await db.Conversations.Where(c => conversationIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Name, ct);
         var workspaces = await db.Workspaces.Where(w => workspaceIds.Contains(w.Id)).ToDictionaryAsync(w => w.Id, w => w.Name, ct);
         var bodies = await db.Messages.Where(m => messageIds.Contains(m.Id) && m.DeletedAt == null)
-            .ToDictionaryAsync(m => m.Id, m => m.BodyMarkdown, ct);
+            .ToDictionaryAsync(m => m.Id, m => m.BodyMarkdown != "" ? m.BodyMarkdown
+                : m.Attachments.Any() ? "Sent a file" : m.ForwardedBodyMarkdown != null ? "Forwarded a message" : "", ct);
 
         var mentioned = bodies.Values.SelectMany(b => MentionToken().Matches(b).Select(m => m.Groups["id"].Value));
         var people = await directory.GetManyAsync(items.Select(i => i.ActorUserId).Concat(mentioned).Distinct().ToList(), ct);
