@@ -12,10 +12,10 @@ test("pin a message, forward it to another chat, and links only open for members
   await composer.press("Enter");
   const feed = page.getByRole("log", { name: "Messages in Bola Adeyemi" });
   const message = feed.getByRole("article").filter({ hasText: id });
-  await expect(message.locator("time")).not.toHaveText("Sending…");
+  await expect(message.locator("[id^='msg-'] time")).not.toHaveText("Sending…");
   const messageId = (await message.locator("[id^='msg-']").getAttribute("id"))!.replace("msg-", "");
 
-  await message.hover();
+  await message.focus();
   await message.getByRole("button", { name: "More actions" }).click();
   await page.getByRole("menuitem", { name: "Pin" }).click();
   const pinned = page.getByRole("region", { name: "Pinned messages" });
@@ -23,7 +23,7 @@ test("pin a message, forward it to another chat, and links only open for members
   await expect(message.getByText("Pinned", { exact: true })).toBeVisible();
   await expectAccessible(page);
 
-  await message.hover();
+  await message.focus();
   await message.getByRole("button", { name: "More actions" }).click();
   await page.getByRole("menuitem", { name: "Forward" }).click();
   const dialog = page.getByRole("dialog", { name: "Forward message" });

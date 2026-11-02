@@ -477,10 +477,10 @@ docs/                     ARCHITECTURE, DECISIONS, DEPENDENCIES
 
 ## 8. Local development
 
-Prerequisites: .NET 10 SDK, Docker Desktop, Node 22, Python 3.11, and a local SQL Server (the `.\MYDB` instance in this setup).
+Prerequisites: .NET 10 SDK, Docker Desktop, Node 22, Python 3.11, and a local SQL Server that allows SQL logins (the default instance `.` in this setup; see D4).
 
 ```powershell
-./scripts/dev-setup.ps1 -SqlServer '.\MYDB'      # .env, ModeHostMock database, user secrets
+./scripts/dev-setup.ps1 -SqlServer '.'           # .env, ModeHostMock database, user secrets
 docker compose up -d postgres clamav file-processor mock-issuer
 dotnet tool restore
 dotnet tool run dotnet-ef database update --project src/Mode.Infrastructure
@@ -496,7 +496,7 @@ dotnet run --project src/Mode.Api                 # http://localhost:5080/health
 | Client dev server | http://localhost:5173 (`docker compose up client`, or `npm run dev` in `client/`) |
 
 Run the SQL Server directory integration tests with:
-`$env:MODE_TEST_HOSTDIR_CONNECTION = "Server=.\MYDB;Database=ModeHostMock;User Id=mode_reader;Password=<from .env>;TrustServerCertificate=True"; dotnet test`
+`$env:MODE_TEST_HOSTDIR_CONNECTION = "Server=.;Database=ModeHostMock;User Id=mode_reader;Password=<from .env>;TrustServerCertificate=True"; dotnet test`
 
 **Browser push:** rerun `./scripts/dev-setup.ps1 -PushSubject mailto:you@example.com` once. It keeps the generated VAPID keys and turns push on.
 

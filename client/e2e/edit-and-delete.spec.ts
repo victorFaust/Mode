@@ -13,11 +13,11 @@ test("edit a sent message, delete it and undo the delete", async ({ page }) => {
   const feed = page.getByRole("log", { name: "Messages in Bola Adeyemi" });
   const sent = feed.getByRole("article").filter({ hasText: id });
   await expect(sent).toBeVisible();
-  await expect(sent.locator("time")).not.toHaveText("Sending…");
+  await expect(sent.locator("[id^='msg-'] time")).not.toHaveText("Sending…");
   const metaId = await sent.locator("[id^='msg-']").getAttribute("id");
   const message = feed.getByRole("article").filter({ has: page.locator(`[id='${metaId}']`) });
 
-  await message.hover();
+  await message.focus();
   await message.getByRole("button", { name: "Edit", exact: true }).click();
   const editBox = message.getByRole("textbox", { name: "Edit message" });
   await editBox.click();
@@ -28,7 +28,7 @@ test("edit a sent message, delete it and undo the delete", async ({ page }) => {
   await expect(message.locator("em", { hasText: "fixed" })).toBeVisible();
   await expect(message.getByText("Edited")).toBeVisible();
 
-  await message.hover();
+  await message.focus();
   await message.getByRole("button", { name: "Delete", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
   await expect(message.getByText("This message was deleted.")).toBeVisible();

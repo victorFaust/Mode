@@ -14,9 +14,11 @@ The host users live in a separate SQL Server database, so Mode tables cannot ref
 
 This keeps the chat path from hitting the host database on every message render. The trade-off is that a user deactivated in the host can keep using Mode for up to `CacheMinutes`. In Prompt 2, the host JWT expiry bounds this as well. Set `CacheMinutes` to 0 if revocation must be immediate.
 
-## D4. Local development uses the existing SQL Server `.\MYDB` instance, and the API runs on the host
+## D4. Local development uses a local SQL Server instance (now the default instance), and the API runs on the host
 
 TCP is disabled on the local SQL Server instances, so a container cannot reach them. The API therefore runs with `dotnet run` and connects over shared memory, while the other services run in Docker. The `full` compose profile runs the API in Docker too, but that requires TCP to be enabled on SQL Server.
+
+On 2026-11-02 the mock host database moved from `.\MYDB` to the default instance `.`, because `.\MYDB` kept stalling for minutes. `.\SQLEXPRESS` was not used: it allows Windows logins only, and the reader account is a SQL login. The old copy on `.\MYDB` was left in place. On this 8 GB machine every instance stalls on the first connection after an idle spell, because Windows pages SQL Server out when memory runs short. Retry, or free memory, before treating a directory timeout as a code failure.
 
 ## D5. Conversations are organization-wide, not scoped to a workspace
 
