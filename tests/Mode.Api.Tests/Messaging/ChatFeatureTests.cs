@@ -148,6 +148,22 @@ public sealed class ChatFeatureTests(ApiFixture api)
     }
 
     [Fact]
+    public async Task A_message_can_be_just_files_but_not_empty()
+    {
+        var bId = api.NewUser();
+        using var a = api.ClientFor(api.NewUser());
+        var chat = await ChatAsync(a, bId);
+        var file = await a.UploadFileAsync("Conversation", chat, "photo.png", [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0]);
+
+        var sent = await SendAsync(a, chat, "", fileIds: [Id(file)]);
+        var empty = await a.PostAsJsonAsync($"/api/v1/conversations/{chat}/messages", new { id = Guid.NewGuid(), bodyMarkdown = " " });
+
+        Assert.Equal("", sent.GetProperty("bodyMarkdown").GetString());
+        Assert.Equal(Id(file), Assert.Single(sent.GetProperty("files").EnumerateArray()).GetProperty("fileId").GetGuid());
+        Assert.Equal(HttpStatusCode.BadRequest, empty.StatusCode);
+    }
+
+    [Fact]
     public async Task Only_the_author_sees_earlier_versions_and_deleted_text_is_never_listed()
     {
         var bId = api.NewUser();
