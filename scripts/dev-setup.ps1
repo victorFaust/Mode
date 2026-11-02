@@ -8,7 +8,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$SqlServer = '.\MYDB',
+    [string]$SqlServer = '.',
     [ValidatePattern('^[A-Za-z_][A-Za-z0-9_]{0,127}$')]
     [string]$HostDatabase = 'ModeHostMock',
     [ValidatePattern('^(mailto:\S+@\S+|https://\S+)?$')]
