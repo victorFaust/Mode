@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Mode.Api.Auditing;
@@ -8,6 +9,7 @@ using Mode.Api.Endpoints;
 using Mode.Api.Files;
 using Mode.Api.Files.Processing;
 using Mode.Api.Files.Scanning;
+using Mode.Api.Governance;
 using Mode.Api.Hubs;
 using Mode.Api.Jobs;
 using Mode.Api.Messaging;
@@ -95,6 +97,24 @@ builder.Services.AddScoped<IJobHandler, PushSendJob>();
 builder.Services.AddScoped<IJobHandler, ActivityExpiryJob>();
 builder.Services.AddScoped<IJobHandler, EmailDigestJob>();
 
+builder.Services.AddOptions<ComplianceOptions>().BindConfiguration(ComplianceOptions.SectionName);
+builder.Services.AddScoped<DlpService>();
+builder.Services.AddScoped<RetentionService>();
+builder.Services.AddScoped<IJobHandler, RetentionJob>();
+builder.Services.AddScoped<IJobHandler, ComplianceExportJob>();
+builder.Services.AddRateLimiter(o =>
+{
+    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    o.AddPolicy(IncomingWebhookEndpoints.RateLimitPolicy, http => RateLimitPartition.GetFixedWindowLimiter(
+        http.Request.RouteValues["webhookId"]?.ToString() ?? "none",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = builder.Configuration.GetValue("Webhooks:PerMinute", 30),
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+        }));
+});
+
 builder.Services.AddSignalR()
     .AddJsonProtocol(o => o.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
@@ -137,6 +157,7 @@ if (app.Environment.IsDevelopment())
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 // Liveness: process is up. Readiness: database and host user directory are reachable.
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
@@ -155,8 +176,10 @@ app.MapGroup("/api/v1")
     .MapFileEndpoints()
     .MapActivityEndpoints()
     .MapRoomStateEndpoints()
-    .MapSearchEndpoints();
+    .MapSearchEndpoints()
+    .MapAdminEndpoints();
 
+app.MapIncomingWebhooks();
 app.MapInternalFileEndpoints();
 
 app.MapHub<ModeHub>(ModeHub.Path, options => options.CloseOnAuthenticationExpiration = true);

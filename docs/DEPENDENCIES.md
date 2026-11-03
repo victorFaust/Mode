@@ -6,7 +6,7 @@ All dependencies are open source and free for internal use. Licences were taken 
 
 | Package | Version | Licence | Used by |
 | --- | --- | --- | --- |
-| .NET 10 runtime and ASP.NET Core (includes SignalR) | 10.0 | MIT | API, mock issuer |
+| .NET 10 runtime and ASP.NET Core (includes SignalR) | 10.0 | MIT | API, mock issuer; also ZIP, HMAC and rate limiting for governance (D46) |
 | Npgsql.EntityFrameworkCore.PostgreSQL | 10.0.3 | PostgreSQL | Infrastructure |
 | Microsoft.EntityFrameworkCore.Design | 10.0.14 | MIT | migrations (design-time only) |
 | Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore | 10.0.14 | MIT | readiness check |

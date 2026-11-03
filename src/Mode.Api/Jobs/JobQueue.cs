@@ -138,7 +138,7 @@ public sealed class JobWorker(JobRunner runner, IServiceScopeFactory scopes, IOp
         }
     }
 
-    private static readonly string[] Recurring = [JobTypes.FilesPurge, JobTypes.ActivityExpire, JobTypes.EmailDigest];
+    private static readonly string[] Recurring = [JobTypes.FilesPurge, JobTypes.ActivityExpire, JobTypes.EmailDigest, JobTypes.RetentionApply];
 
     /// <summary>Queues each recurring job unless one is already waiting. At least hourly, so daily digests hit their hour.</summary>
     private async Task ScheduleAsync(JobOptions settings, CancellationToken ct)
@@ -172,6 +172,8 @@ public static class JobTypes
     public const string FileScan = "file.scan";
     public const string FilePreview = "file.preview";
     public const string FilesPurge = "files.purge";
+    public const string RetentionApply = "retention.apply";
+    public const string ComplianceExport = "compliance.export";
     public const string PushSend = "push.send";
     public const string ActivityExpire = "activity.expire";
     public const string EmailDigest = "email.digest";

@@ -20,6 +20,7 @@ interface Session {
   sub: string;
   name: string;
   guest: boolean;
+  admin?: boolean;
 }
 
 interface CachedToken {
@@ -38,7 +39,7 @@ function tokenSource(session: Session) {
     pending ??= fetch("/issuer/token", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sub: session.sub, name: session.name, roles: session.guest ? ["guest"] : [] }),
+      body: JSON.stringify({ sub: session.sub, name: session.name, roles: session.guest ? ["guest"] : session.admin ? ["mode-admin"] : [] }),
     }).then(async (response) => {
       if (!response.ok) throw new Error(`Mock issuer returned ${response.status}. Is it running on port 5100?`);
       const body = (await response.json()) as { access_token: string; expires_at: string };
@@ -54,6 +55,7 @@ function DevShell() {
   const [theme, setTheme] = useState<ModeTheme["mode"]>(() => (localStorage.getItem("mode.dev.theme") as ModeTheme["mode"]) ?? "light");
   const [chosen, setChosen] = useState(people[0].id);
   const [guest, setGuest] = useState(false);
+  const [admin, setAdmin] = useState(false);
   const host = useRef<HTMLDivElement>(null);
   const instance = useRef<ModeInstance | null>(null);
 
@@ -84,7 +86,7 @@ function DevShell() {
         <form onSubmit={(e) => {
           e.preventDefault();
           const person = people.find((p) => p.id === chosen)!;
-          const next = { sub: person.id, name: person.name, guest };
+          const next = { sub: person.id, name: person.name, guest, admin: admin && !guest };
           sessionStorage.setItem(sessionKey, JSON.stringify(next));
           setSession(next);
         }}>
@@ -95,6 +97,7 @@ function DevShell() {
             {people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
           <label className="dev-check"><input type="checkbox" checked={guest} onChange={(e) => setGuest(e.target.checked)} /> Host guest</label>
+          <label className="dev-check"><input type="checkbox" checked={admin} onChange={(e) => setAdmin(e.target.checked)} /> Mode admin</label>
           <button type="submit">Sign in</button>
         </form>
       </main>
@@ -105,7 +108,7 @@ function DevShell() {
     <div className="dev-host">
       <header className="dev-bar">
         <strong>Host app</strong>
-        <span>Signed in as {session.name}{session.guest ? " (guest)" : ""}</span>
+        <span>Signed in as {session.name}{session.guest ? " (guest)" : session.admin ? " (admin)" : ""}</span>
         <span className="dev-spacer" />
         <label>Theme{" "}
           <select value={theme} onChange={(e) => setTheme(e.target.value as ModeTheme["mode"])}>

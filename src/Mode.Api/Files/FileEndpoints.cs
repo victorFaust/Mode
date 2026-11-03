@@ -54,7 +54,8 @@ public static class FileEndpoints
         return app;
     }
 
-    private static async Task<IResult> StartUpload(StartUploadRequest body, [AsParameters] FileDependencies deps, CancellationToken ct)
+    private static async Task<IResult> StartUpload(
+        StartUploadRequest body, Governance.DlpService dlp, [AsParameters] FileDependencies deps, CancellationToken ct)
     {
         var (user, db, policy, _, _, options, _, clock) = deps;
         var settings = options.Value;
@@ -65,6 +66,8 @@ public static class FileEndpoints
         if (!permission.Has(Permission.Post)) return Problems.Forbidden("This channel is archived.");
         if (!FileNames.TrySanitize(body.Name, settings.Extensions, out var name, out var extension, out var error))
             return Problems.Invalid("name", error);
+        if (await dlp.IsBlockedExtensionAsync(extension, ct))
+            return Problems.Invalid("name", $"Your organization doesn't allow .{extension} files.");
         if (body.Size is not > 0) return Problems.Invalid("size", "Required.");
         if (body.Size > settings.MaxSizeBytes) return Problems.Invalid("size", $"Files can be at most {settings.MaxSizeMb} MB.");
 

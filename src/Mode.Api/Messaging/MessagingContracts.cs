@@ -40,7 +40,9 @@ public sealed record MessageDto(
     IReadOnlyList<AttachmentDto> Files,
     bool IsPinned,
     /// <summary>The forwarded copy shown as a card under the note in <see cref="BodyMarkdown"/>.</summary>
-    ForwardDto? Forwarded);
+    ForwardDto? Forwarded,
+    /// <summary>Posted by an incoming webhook; <see cref="Author"/> then carries the bot's name.</summary>
+    bool IsBot);
 
 /// <summary><see cref="MessageId"/> is null when the original no longer exists. Opening it still requires access to its room.</summary>
 public sealed record ForwardDto(Guid? MessageId, UserDto Author, DateTimeOffset CreatedAt, string BodyMarkdown);
@@ -50,7 +52,7 @@ public sealed record PinDto(MessageDto Message, UserDto PinnedBy, DateTimeOffset
 /// <summary>One version of a message's text, oldest first; the last one is the current text.</summary>
 public sealed record MessageVersionDto(string BodyMarkdown, DateTimeOffset WrittenAt);
 
-public sealed record ForwardMessageRequest(Guid? Id, RoomRef? To, string? BodyMarkdown);
+public sealed record ForwardMessageRequest(Guid? Id, RoomRef? To, string? BodyMarkdown, bool? AcknowledgeDlpWarnings = null);
 
 /// <summary>
 /// Newest first; pass <see cref="NextBefore"/> as <c>before</c> to get older messages. Pages requested with <c>after</c>
@@ -58,9 +60,9 @@ public sealed record ForwardMessageRequest(Guid? Id, RoomRef? To, string? BodyMa
 /// </summary>
 public sealed record MessagePage(IReadOnlyList<MessageDto> Items, long? NextBefore, long? NextAfter);
 
-public sealed record SendMessageRequest(Guid? Id, string? BodyMarkdown, Guid? ParentMessageId, IReadOnlyList<Guid>? FileIds);
+public sealed record SendMessageRequest(Guid? Id, string? BodyMarkdown, Guid? ParentMessageId, IReadOnlyList<Guid>? FileIds, bool? AcknowledgeDlpWarnings = null);
 
-public sealed record EditMessageRequest(string? BodyMarkdown);
+public sealed record EditMessageRequest(string? BodyMarkdown, bool? AcknowledgeDlpWarnings = null);
 
 public sealed record ActivityDto(
     Guid Id, ActivityType Type, string ActorUserId, Guid? WorkspaceId, Guid? ChannelId, Guid? ConversationId, Guid? MessageId, DateTimeOffset CreatedAt);

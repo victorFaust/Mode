@@ -3,7 +3,7 @@ import type {
   Channel, Conversation, Message, Pin, Presence, RoomRef, RoomUnread, User, Workspace,
 } from "../api/client";
 
-export type Section = "activity" | "chat" | "channels" | "files";
+export type Section = "activity" | "chat" | "channels" | "files" | "admin";
 
 export type SidePane =
   | { kind: "thread"; messageId: string }
@@ -14,10 +14,17 @@ export interface PendingSend {
   bodyMarkdown: string;
   parentMessageId: string | null;
   fileIds: string[];
+  acknowledgeDlpWarnings?: boolean;
 }
 
 /** A message as shown: server state, or a local optimistic copy while sending. */
-export type LocalMessage = Message & { pending?: { state: "sending" | "failed"; send: PendingSend } };
+export type LocalMessage = Message & { pending?: { state: "sending" | "failed"; send: PendingSend; error?: string } };
+
+/** Data-loss warning rules matched; the sender decides whether to send anyway. */
+export interface DlpWarning {
+  rules: string[];
+  confirm: () => void;
+}
 
 export interface RoomMessages {
   items: LocalMessage[];
@@ -48,6 +55,8 @@ export interface Banner {
 export interface ModeState {
   me: User | null;
   isGuest: boolean;
+  isAdmin: boolean;
+  dlpWarning: DlpWarning | null;
   workspaces: Workspace[];
   channels: Record<string, Channel[]>;
   conversations: Conversation[];
@@ -83,6 +92,8 @@ export interface ModeState {
 export const initialState = (): ModeState => ({
   me: null,
   isGuest: false,
+  isAdmin: false,
+  dlpWarning: null,
   workspaces: [],
   channels: {},
   conversations: [],

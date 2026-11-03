@@ -21,12 +21,24 @@ export type HighlightedText = Schemas["HighlightedText"];
 export type Reaction = Schemas["ReactionSummaryDto"];
 export type Pin = Schemas["PinDto"];
 export type MessageVersion = Schemas["MessageVersionDto"];
+export type AdminWorkspace = Schemas["AdminWorkspaceDto"];
+export type AuditEntry = Schemas["AuditEntryDto"];
+export type LegalHold = Schemas["LegalHoldDto"];
+export type HoldTarget = Schemas["HoldTarget"];
+export type DlpPattern = Schemas["DlpPattern"];
+export type DlpSettings = Schemas["DlpSettingsDto"];
+export type Webhook = Schemas["WebhookDto"];
+export type WebhookSecret = Schemas["WebhookSecretDto"];
+export type ComplianceExport = Schemas["ExportDto"];
 
 export interface Problem {
   title?: string;
   detail?: string;
   status?: number;
   errors?: Record<string, string[]>;
+  /** Set by data-loss rules: "dlp_warning" (409) or "dlp_blocked" (422), with the matching rule names. */
+  code?: string;
+  rules?: string[];
 }
 
 export class ApiError extends Error {

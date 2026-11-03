@@ -3,6 +3,7 @@ import { AlertTriangle } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { ActivityList } from "../views/ActivityList";
+import { AdminView } from "../views/AdminView";
 import { ChannelsList } from "../views/ChannelsList";
 import { ChatsList } from "../views/ChatsList";
 import { FilesView } from "../views/FilesView";
@@ -13,6 +14,7 @@ import { WelcomePane } from "../views/WelcomePane";
 import { Button, EmptyState } from "../components/ui";
 import { ConnectionBanner } from "../components/ConnectionBanner";
 import { CommandBar } from "../components/CommandBar";
+import { DlpWarningDialog } from "../components/DlpWarningDialog";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { Toasts } from "../components/Toasts";
 import { ShellSkeleton } from "../components/ShellSkeleton";
@@ -91,10 +93,11 @@ export function AppShell() {
     if (e.key === "ArrowRight") setListWidth((w) => Math.min(MAX_LIST, w + 16));
   };
 
-  const showsMain = section === "files" || room !== null || searchQuery !== null;
+  const showsMain = section === "files" || section === "admin" || room !== null || searchQuery !== null;
   const list = section === "activity" ? <ActivityList /> : section === "chat" ? <ChatsList /> : section === "channels" ? <ChannelsList /> : null;
   const main = searchQuery !== null ? <SearchView query={searchQuery} />
     : section === "files" ? <FilesView />
+    : section === "admin" ? <AdminView />
     : room ? <RoomPane key={`${room.type}:${room.id}`} room={room} />
     : <WelcomePane />;
 
@@ -133,6 +136,7 @@ export function AppShell() {
         )}
         <Toasts />
         <CommandBar />
+        <DlpWarningDialog />
       </div>
     </RadixTooltip.Provider>
   );

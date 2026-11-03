@@ -29,10 +29,10 @@ function New-Secret {
     'Aa9' + (-join ($bytes | ForEach-Object { $chars[$_ % $chars.Length] }))
 }
 
-$secretKeys = 'POSTGRES_PASSWORD', 'HOST_DIRECTORY_READER_PASSWORD', 'PROCESSOR_KEY', 'FILES_LINK_SIGNING_KEY'
+$secretKeys = 'POSTGRES_PASSWORD', 'HOST_DIRECTORY_READER_PASSWORD', 'PROCESSOR_KEY', 'FILES_LINK_SIGNING_KEY', 'COMPLIANCE_SIGNING_KEY'
 
 function New-SecretFor([string]$Key) {
-    if ($Key -ne 'FILES_LINK_SIGNING_KEY') { return New-Secret }
+    if ($Key -notin 'FILES_LINK_SIGNING_KEY', 'COMPLIANCE_SIGNING_KEY') { return New-Secret }
     $bytes = New-Object byte[] 32
     $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
     try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
@@ -87,6 +87,7 @@ $directoryConnection = "Server=$SqlServer;Database=$HostDatabase;User Id=mode_re
 & dotnet user-secrets set 'UserDirectory:ConnectionString' $directoryConnection --project $apiProject | Out-Null
 & dotnet user-secrets set 'Files:LinkSigningKey' $settings.FILES_LINK_SIGNING_KEY --project $apiProject | Out-Null
 & dotnet user-secrets set 'Files:ProcessorKey' $settings.PROCESSOR_KEY --project $apiProject | Out-Null
+& dotnet user-secrets set 'Compliance:SigningKey' $settings.COMPLIANCE_SIGNING_KEY --project $apiProject | Out-Null
 & dotnet user-secrets set 'Push:PublicKey' $settings.VAPID_PUBLIC_KEY --project $apiProject | Out-Null
 & dotnet user-secrets set 'Push:PrivateKey' $settings.VAPID_PRIVATE_KEY --project $apiProject | Out-Null
 if ($PushSubject) { & dotnet user-secrets set 'Push:Subject' $PushSubject --project $apiProject | Out-Null }
