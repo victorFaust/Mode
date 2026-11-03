@@ -50,6 +50,10 @@ public sealed class ApiFixture : IAsyncLifetime
     /// <summary>The background worker is off in tests; this runs every due job now.</summary>
     public Task<int> RunJobsAsync() => Factory.Services.GetRequiredService<JobRunner>().RunAllDueAsync();
 
+    /// <summary>Runs the periodic check that disconnects people deactivated in the host directory.</summary>
+    public Task<int> CheckRealtimeSessionsAsync() =>
+        Factory.Services.GetRequiredService<Mode.Api.Realtime.RealtimeSessionCheck>().RunAsync(CancellationToken.None);
+
     public ModeDbContext CreateDbContext() =>
         new(new DbContextOptionsBuilder<ModeDbContext>().UseNpgsql(_postgres.GetConnectionString()).Options);
 

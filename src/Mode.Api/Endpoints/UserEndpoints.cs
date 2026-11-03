@@ -10,7 +10,7 @@ public static class UserEndpoints
     {
         api.MapGet("/me", GetMe).WithTags("Users").Produces<MeDto>();
         var users = api.MapGroup("/users").WithTags("Users");
-        users.MapGet("/search", Search).Produces<UserDto[]>();
+        users.MapGet("/search", Search).RequireRateLimiting(Security.RateLimits.Directory).Produces<UserDto[]>();
         users.MapGet("/{userId}", GetById).Produces<UserDto>();
         return api;
     }

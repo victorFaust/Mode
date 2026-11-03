@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
-using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Mode.Api.Auditing;
 using Mode.Api.Auth;
@@ -16,6 +16,7 @@ using Mode.Api.Messaging;
 using Mode.Api.Notifications;
 using Mode.Api.Presence;
 using Mode.Api.Realtime;
+using Mode.Api.Security;
 using Mode.Domain.Files;
 using Mode.Infrastructure;
 using Mode.Infrastructure.Files;
@@ -60,6 +61,8 @@ builder.Services.AddScoped<AccessRevoker>();
 builder.Services.AddSingleton<ConnectionRegistry>();
 builder.Services.AddSingleton<RealtimeNotifier>();
 builder.Services.AddSingleton<TypingThrottle>();
+builder.Services.AddSingleton<RealtimeSessionCheck>();
+if (!openApiExport) builder.Services.AddHostedService<RealtimeSessionChecker>();
 
 builder.Services.AddOptions<FilesOptions>()
     .BindConfiguration(FilesOptions.SectionName)
@@ -102,18 +105,7 @@ builder.Services.AddScoped<DlpService>();
 builder.Services.AddScoped<RetentionService>();
 builder.Services.AddScoped<IJobHandler, RetentionJob>();
 builder.Services.AddScoped<IJobHandler, ComplianceExportJob>();
-builder.Services.AddRateLimiter(o =>
-{
-    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    o.AddPolicy(IncomingWebhookEndpoints.RateLimitPolicy, http => RateLimitPartition.GetFixedWindowLimiter(
-        http.Request.RouteValues["webhookId"]?.ToString() ?? "none",
-        _ => new FixedWindowRateLimiterOptions
-        {
-            PermitLimit = builder.Configuration.GetValue("Webhooks:PerMinute", 30),
-            Window = TimeSpan.FromMinutes(1),
-            QueueLimit = 0,
-        }));
-});
+builder.Services.AddModeRateLimits(builder.Configuration);
 
 builder.Services.AddSignalR()
     .AddJsonProtocol(o => o.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
@@ -138,6 +130,15 @@ builder.Services.AddHealthChecks().AddModeInfrastructureChecks(tags: ["ready"]);
 
 var app = builder.Build();
 
+// Behind Caddy (deploy/), the API is reachable only on the private Docker network, so the proxy's headers are trusted.
+if (app.Configuration.GetValue("ForwardedHeaders:Enabled", false))
+{
+    var forwarded = new ForwardedHeadersOptions { ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto, ForwardLimit = 1 };
+    forwarded.KnownIPNetworks.Clear();
+    forwarded.KnownProxies.Clear();
+    app.UseForwardedHeaders(forwarded);
+}
+
 app.UseSerilogRequestLogging(options => options.GetMessageTemplateProperties = (http, path, elapsed, status) =>
 [
     new LogEventProperty("RequestMethod", new ScalarValue(http.Request.Method)),
@@ -147,6 +148,8 @@ app.UseSerilogRequestLogging(options => options.GetMessageTemplateProperties = (
 ]);
 app.UseExceptionHandler();
 app.UseStatusCodePages();
+app.UseModeHardening();
+if (!app.Environment.IsDevelopment()) app.UseHsts();
 
 if (app.Environment.IsDevelopment())
 {

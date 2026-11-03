@@ -85,7 +85,7 @@ public static class AdminEndpoints
         admin.MapDelete("/webhooks/{webhookId:guid}", RevokeWebhook).Produces(StatusCodes.Status204NoContent);
 
         admin.MapGet("/exports", ListExports).Produces<ExportDto[]>();
-        admin.MapPost("/exports", RequestExport).Produces<ExportDto>(StatusCodes.Status202Accepted);
+        admin.MapPost("/exports", RequestExport).RequireRateLimiting(Security.RateLimits.Export).Produces<ExportDto>(StatusCodes.Status202Accepted);
         admin.MapGet("/exports/{exportId:guid}/download", DownloadExport).Produces(StatusCodes.Status200OK, contentType: "application/zip");
         return api;
     }

@@ -238,3 +238,14 @@ Administrators are people whose host token carries the role mapped to `Admin` (`
 - **Data-loss rules.** Admins block file types at upload and add message patterns that either warn or block. Warnings let the sender confirm and send anyway; blocks stop the message, its edits and forwards. Bots can't confirm, so only blocking rules apply to them. Patterns use the non-backtracking regex engine with a 250 ms timeout; a timeout counts as a match, so a slow pattern fails safe. At most 50 patterns of 500 characters each.
 
 No new packages: ZIP, HMAC and rate limiting come from .NET itself.
+
+## D47. Security review and release (Prompt 10)
+
+Findings, tests, accepted risks and the go/no-go list are in [SECURITY.md](SECURITY.md). Decisions made along the way:
+
+- **Per-person rate limits** on the endpoints that are cheap to call and costly to serve: sending and forwarding 60 a minute, search 30, people search 60, upload start 20, export requests 5. Fixed windows partitioned by user id; 429 with `Retry-After`. Reading is not limited, because the client pages and replays on reconnect.
+- **Signed download links stay person-independent with a 5-minute life** (risk R1). Binding them to a person would need cookies, which the embedded client deliberately doesn't use.
+- **Deactivation reaches live connections** through a periodic directory re-check (60 s) instead of a per-message check, which would load the host SQL Server.
+- **JSON bodies are capped at 1 MB**; file bytes keep their own limit.
+- **Deployment is one Linux server with Docker Compose and Caddy** ([DEPLOYMENT.md](DEPLOYMENT.md)). Migrations run from an EF bundle as a separate step, never at API startup. Images are tagged with the release version so rollback is a setting change.
+- **The load test is our own small .NET tool** (`tools/Mode.LoadTest`) using the SignalR client the tests already use, instead of adding k6 or NBomber.

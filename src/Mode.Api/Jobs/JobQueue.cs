@@ -87,7 +87,10 @@ public sealed class JobRunner(IServiceScopeFactory scopes, IOptions<JobOptions> 
         {
             var giveUp = handler is null || job.Attempts >= job.MaxAttempts;
             var error = ex.Message.Length > 2000 ? ex.Message[..2000] : ex.Message;
-            logger.LogWarning(ex, "Job {JobId} ({JobType}) failed on attempt {Attempt}", job.Id, job.Type, job.Attempts);
+            if (giveUp)
+                logger.LogError(ex, "Job {JobId} ({JobType}) gave up after {Attempt} attempts", job.Id, job.Type, job.Attempts);
+            else
+                logger.LogWarning(ex, "Job {JobId} ({JobType}) failed on attempt {Attempt}", job.Id, job.Type, job.Attempts);
 
             await db.Jobs.Where(j => j.Id == job.Id).ExecuteUpdateAsync(s => s
                 .SetProperty(j => j.Status, giveUp ? JobStatus.Failed : JobStatus.Pending)
