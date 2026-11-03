@@ -4,6 +4,9 @@ obj/
 *.user
 TestResults/
 .env
+deploy/client-dist/
+deploy/backups/
+deploy/efbundle
 .data/
 node_modules/
 dist/

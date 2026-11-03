@@ -26,7 +26,7 @@ public static class FileEndpoints
     public static RouteGroupBuilder MapFileEndpoints(this RouteGroupBuilder api)
     {
         var files = api.MapGroup("/files").WithTags("Files");
-        files.MapPost("/uploads", StartUpload).Produces<StartUploadResponse>(StatusCodes.Status201Created);
+        files.MapPost("/uploads", StartUpload).RequireRateLimiting(Security.RateLimits.Upload).Produces<StartUploadResponse>(StatusCodes.Status201Created);
         files.MapPut("/uploads/{uploadId:guid}/content", UploadContent).Produces(StatusCodes.Status204NoContent);
         files.MapPost("/uploads/{uploadId:guid}/complete", CompleteUpload).Produces<FileDto>(StatusCodes.Status201Created);
         files.MapGet("/{fileId:guid}", Get).Produces<FileDto>();

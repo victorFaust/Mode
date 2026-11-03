@@ -27,10 +27,12 @@ public static class MessageEndpoints
         api.MapPost("/channels/{channelId:guid}/messages",
             (Guid channelId, SendMessageRequest body, IOptions<FilesOptions> files, DlpService dlp, [AsParameters] MessageDependencies deps, CancellationToken ct) =>
                 Send(new RoomRef(RoomType.Channel, channelId), body, files.Value, dlp, deps, ct)).WithTags("Messages")
+            .RequireRateLimiting(Security.RateLimits.Send)
             .Produces<MessageDto>(StatusCodes.Status201Created).Produces<MessageDto>();
         api.MapPost("/conversations/{conversationId:guid}/messages",
             (Guid conversationId, SendMessageRequest body, IOptions<FilesOptions> files, DlpService dlp, [AsParameters] MessageDependencies deps, CancellationToken ct) =>
                 Send(new RoomRef(RoomType.Conversation, conversationId), body, files.Value, dlp, deps, ct)).WithTags("Messages")
+            .RequireRateLimiting(Security.RateLimits.Send)
             .Produces<MessageDto>(StatusCodes.Status201Created).Produces<MessageDto>();
         api.MapGet("/channels/{channelId:guid}/pins",
             (Guid channelId, CurrentUser user, AccessPolicy policy, MessageStore store, CancellationToken ct) =>
@@ -46,7 +48,7 @@ public static class MessageEndpoints
         messages.MapPatch("/", Edit).Produces<MessageDto>();
         messages.MapDelete("/", Delete).Produces(StatusCodes.Status204NoContent);
         messages.MapPost("/restore", Restore).Produces<MessageDto>();
-        messages.MapPost("/forward", Forward).Produces<MessageDto>(StatusCodes.Status201Created).Produces<MessageDto>();
+        messages.MapPost("/forward", Forward).RequireRateLimiting(Security.RateLimits.Send).Produces<MessageDto>(StatusCodes.Status201Created).Produces<MessageDto>();
         messages.MapPut("/pin", Pin).Produces<MessageDto>();
         messages.MapDelete("/pin", Unpin).Produces<MessageDto>();
         messages.MapPut("/reactions/{emoji}", AddReaction).Produces<ReactionSummaryDto[]>();

@@ -9,6 +9,7 @@ public static class AuditActions
 {
     public const string SignIn = "auth.sign_in";
     public const string RealtimeConnected = "auth.realtime_connected";
+    public const string RealtimeRevoked = "auth.realtime_revoked";
     public const string WorkspaceCreated = "workspace.created";
     public const string WorkspaceUpdated = "workspace.updated";
     public const string MemberAdded = "workspace.member_added";

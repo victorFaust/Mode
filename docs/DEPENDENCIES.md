@@ -76,6 +76,16 @@ All dependencies are open source and free for internal use. Licences were taken 
 | python:3.11-slim | PSF | file-processor base |
 | mcr.microsoft.com/dotnet/aspnet:10.0, sdk:10.0 | MIT | |
 | node:22-alpine | MIT | client dev server |
+| caddy:2.10-alpine | Apache 2.0 | production reverse proxy with automatic HTTPS ([deploy/](../deploy)) |
+
+## Tools
+
+| Tool | Licence | Used for |
+| --- | --- | --- |
+| pip-audit (installed into the file processor's dev virtual environment only; not in requirements.txt) | Apache 2.0 | Python dependency audit |
+| tools/Mode.LoadTest | (ours) | load test; uses Microsoft.AspNetCore.SignalR.Client, already listed |
+
+Audits on 2026-11-03: `dotnet list package --vulnerable --include-transitive` none, `npm audit` 0, `pip-audit` none.
 
 ## Not adopted
 

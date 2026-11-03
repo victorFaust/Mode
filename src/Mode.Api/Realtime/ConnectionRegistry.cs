@@ -10,15 +10,31 @@ namespace Mode.Api.Realtime;
 /// </summary>
 public sealed class ConnectionRegistry
 {
-    private sealed record Connection(CurrentUser User, ConcurrentDictionary<string, RoomRef> Rooms);
+    private sealed record Connection(CurrentUser User, ConcurrentDictionary<string, RoomRef> Rooms, Action Abort);
 
     private readonly ConcurrentDictionary<string, Connection> _connections = new();
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> _byUser = new();
 
-    public void Add(string connectionId, CurrentUser user)
+    public void Add(string connectionId, CurrentUser user, Action abort)
     {
-        _connections[connectionId] = new Connection(user, new ConcurrentDictionary<string, RoomRef>());
+        _connections[connectionId] = new Connection(user, new ConcurrentDictionary<string, RoomRef>(), abort);
         _byUser.GetOrAdd(user.Id, _ => new ConcurrentDictionary<string, byte>())[connectionId] = 0;
+    }
+
+    public IReadOnlyList<string> ConnectedUserIds() => _byUser.Where(u => !u.Value.IsEmpty).Select(u => u.Key).ToList();
+
+    /// <summary>Closes every live connection of a person; the hub's disconnect handling removes their groups.</summary>
+    public int AbortAll(string userId)
+    {
+        if (!_byUser.TryGetValue(userId, out var ids)) return 0;
+        var aborted = 0;
+        foreach (var id in ids.Keys)
+            if (_connections.TryGetValue(id, out var connection))
+            {
+                connection.Abort();
+                aborted++;
+            }
+        return aborted;
     }
 
     public void Remove(string connectionId)

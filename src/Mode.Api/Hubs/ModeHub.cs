@@ -40,7 +40,7 @@ public sealed class ModeHub(
     public override async Task OnConnectedAsync()
     {
         var user = CurrentUser.FromPrincipal(Context.User!);
-        registry.Add(Context.ConnectionId, user);
+        registry.Add(Context.ConnectionId, user, Context.Abort);
         await Groups.AddToGroupAsync(Context.ConnectionId, RealtimeEvents.UserGroup(user.Id));
 
         audit.Record(AuditActions.RealtimeConnected, "connection", Context.ConnectionId, actorUserId: user.Id);

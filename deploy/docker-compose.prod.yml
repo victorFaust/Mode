@@ -1,0 +1,97 @@
+name: mode
+
+# Production stack for one Linux server; see docs/DEPLOYMENT.md. Only Caddy publishes ports.
+services:
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      MODE_DOMAIN: ${MODE_DOMAIN:?set MODE_DOMAIN in .env}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./client-dist:/srv/mode:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+
+  api:
+    image: ${MODE_API_IMAGE:-mode-api}:${MODE_VERSION:?set MODE_VERSION in .env}
+    build:
+      context: ..
+      dockerfile: src/Mode.Api/Dockerfile
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ForwardedHeaders__Enabled: "true"
+      ConnectionStrings__Mode: Host=postgres;Database=mode;Username=mode;Password=${POSTGRES_PASSWORD}
+      UserDirectory__ConnectionString: ${HOST_DIRECTORY_CONNECTION_STRING:?set HOST_DIRECTORY_CONNECTION_STRING}
+      Auth__Issuer: ${AUTH_ISSUER:?set AUTH_ISSUER}
+      Auth__Audience: ${AUTH_AUDIENCE:?set AUTH_AUDIENCE}
+      Auth__MetadataAddress: ${AUTH_METADATA_ADDRESS:-}
+      Auth__PublicKeyPem: ${AUTH_PUBLIC_KEY_PEM:-}
+      Cors__AllowedOrigins__0: ${HOST_APP_ORIGIN:?set HOST_APP_ORIGIN}
+      Files__StoragePath: /data/files
+      Files__LinkSigningKey: ${FILES_LINK_SIGNING_KEY:?set FILES_LINK_SIGNING_KEY}
+      Files__ProcessorKey: ${PROCESSOR_KEY:?set PROCESSOR_KEY}
+      Files__ProcessorUrl: http://file-processor:8000
+      Files__ProcessorCallbackBaseUrl: http://api:8080
+      ClamAv__Host: clamav
+      Compliance__SigningKey: ${COMPLIANCE_SIGNING_KEY:?set COMPLIANCE_SIGNING_KEY}
+      Push__Subject: ${PUSH_SUBJECT:-}
+      Push__PublicKey: ${VAPID_PUBLIC_KEY:-}
+      Push__PrivateKey: ${VAPID_PRIVATE_KEY:-}
+      Email__Enabled: ${EMAIL_ENABLED:-false}
+      Email__Host: ${SMTP_HOST:-}
+      Email__Username: ${SMTP_USERNAME:-}
+      Email__Password: ${SMTP_PASSWORD:-}
+      Email__FromAddress: ${EMAIL_FROM:-}
+      Email__AppUrl: ${HOST_APP_ORIGIN}
+    volumes:
+      - files:/data/files
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mode
+      POSTGRES_USER: mode
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mode -d mode"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  clamav:
+    image: clamav/clamav:1.4
+    restart: unless-stopped
+    volumes:
+      - clamav:/var/lib/clamav
+      - ../docker/clamav/clamd.conf:/etc/clamav/clamd.conf:ro
+
+  file-processor:
+    image: ${MODE_PROCESSOR_IMAGE:-mode-file-processor}:${MODE_VERSION}
+    build: ../services/file-processor
+    restart: unless-stopped
+    environment:
+      PROCESSOR_KEY: ${PROCESSOR_KEY}
+      MODE_API_BASE_URL: http://api:8080
+
+volumes:
+  pgdata:
+  files:
+  clamav:
+  caddy_data:
+  caddy_config:

@@ -42,7 +42,7 @@ public static class SearchEndpoints
 
     public static RouteGroupBuilder MapSearchEndpoints(this RouteGroupBuilder api)
     {
-        api.MapGet("/search", Search).WithTags("Search").Produces<SearchResponse>();
+        api.MapGet("/search", Search).WithTags("Search").RequireRateLimiting(Security.RateLimits.Search).Produces<SearchResponse>();
         return api;
     }
 
