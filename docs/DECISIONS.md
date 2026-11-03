@@ -225,3 +225,16 @@ Prompt 7 was cut down to chats while channels are paused (D43). Guests, the priv
 - **Pinned and hidden chats** are per person (`ConversationMember.IsPinned` and `IsHidden`). A new message in a hidden chat brings it back, as in Teams.
 
 Turning a flag back on restores the section.
+
+## D46. Governance: admin area, audit, retention with holds, compliance export, webhooks and data-loss rules (Prompt 8)
+
+Administrators are people whose host token carries the role mapped to `Admin` (`Auth:RoleMap`, `mode-admin` by default). Accounts stay in the host application; the Admin section manages only Mode data. Every admin action is written to the audit log.
+
+- **Audit log is append-only.** Triggers reject `UPDATE`, `DELETE` and `TRUNCATE` on `AuditLogs`, so even the application can't rewrite history. Admins filter by date, person, action prefix and workspace, and can export a CSV (at most 100,000 rows). Every field is quoted, and values starting with `=`, `+`, `-`, `@`, tab or carriage return get a leading `'` so spreadsheets don't run them as formulas.
+- **Retention is per workspace only; chats are kept forever.** A workspace can keep channel messages for 1 to 36,500 days, or forever (the default). An hourly job applies it at most once every 20 hours. It deletes expired replies, then expired top-level messages that have no remaining replies, so threads never lose their parent. It also removes old earlier versions (`MessageEdits`) and soft-deletes old unattached files, which the normal purge then removes.
+- **Legal holds win over retention.** A hold on a channel keeps everything in it; a hold on a person keeps everything they wrote or uploaded in any workspace. Holds are released, never deleted, so the record of the hold remains.
+- **Compliance export** builds a ZIP in the background: `messages.jsonl` (with earlier versions and deleted originals from `MessageEdits`), clean file versions, `files.json`, `manifest.json` (SHA-256 of every entry) and `manifest.sig`, an HMAC-SHA256 of the manifest with `Compliance:SigningKey`. Anyone holding the key can verify nothing was changed. Requests and downloads are audited. Limits: 100,000 messages and 1,000 files per export.
+- **Incoming webhooks post into group chats for now** (channels when they return). The admin must belong to the chat. The secret is shown once, stored as a SHA-256 hash, compared in constant time, and can be rotated or revoked. Unknown, revoked and wrong-key requests all get the same 401. Each hook is limited to 30 posts a minute. Messages show the webhook's name with a Bot label.
+- **Data-loss rules.** Admins block file types at upload and add message patterns that either warn or block. Warnings let the sender confirm and send anyway; blocks stop the message, its edits and forwards. Bots can't confirm, so only blocking rules apply to them. Patterns use the non-backtracking regex engine with a 250 ms timeout; a timeout counts as a match, so a slow pattern fails safe. At most 50 patterns of 500 characters each.
+
+No new packages: ZIP, HMAC and rate limiting come from .NET itself.

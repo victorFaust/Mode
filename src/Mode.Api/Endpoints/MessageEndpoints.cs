@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using Mode.Api.Auth;
 using Mode.Api.Authorization;
 using Mode.Api.Files;
+using Mode.Api.Governance;
 using Mode.Api.Messaging;
 using Mode.Api.Notifications;
 using Mode.Api.Realtime;
@@ -24,12 +25,12 @@ public static class MessageEndpoints
             (Guid conversationId, long? before, long? after, int? limit, CurrentUser user, AccessPolicy policy, MessageStore store, CancellationToken ct) =>
                 List(new RoomRef(RoomType.Conversation, conversationId), before, after, limit, user, policy, store, ct)).WithTags("Messages").Produces<MessagePage>();
         api.MapPost("/channels/{channelId:guid}/messages",
-            (Guid channelId, SendMessageRequest body, IOptions<FilesOptions> files, [AsParameters] MessageDependencies deps, CancellationToken ct) =>
-                Send(new RoomRef(RoomType.Channel, channelId), body, files.Value, deps, ct)).WithTags("Messages")
+            (Guid channelId, SendMessageRequest body, IOptions<FilesOptions> files, DlpService dlp, [AsParameters] MessageDependencies deps, CancellationToken ct) =>
+                Send(new RoomRef(RoomType.Channel, channelId), body, files.Value, dlp, deps, ct)).WithTags("Messages")
             .Produces<MessageDto>(StatusCodes.Status201Created).Produces<MessageDto>();
         api.MapPost("/conversations/{conversationId:guid}/messages",
-            (Guid conversationId, SendMessageRequest body, IOptions<FilesOptions> files, [AsParameters] MessageDependencies deps, CancellationToken ct) =>
-                Send(new RoomRef(RoomType.Conversation, conversationId), body, files.Value, deps, ct)).WithTags("Messages")
+            (Guid conversationId, SendMessageRequest body, IOptions<FilesOptions> files, DlpService dlp, [AsParameters] MessageDependencies deps, CancellationToken ct) =>
+                Send(new RoomRef(RoomType.Conversation, conversationId), body, files.Value, dlp, deps, ct)).WithTags("Messages")
             .Produces<MessageDto>(StatusCodes.Status201Created).Produces<MessageDto>();
         api.MapGet("/channels/{channelId:guid}/pins",
             (Guid channelId, CurrentUser user, AccessPolicy policy, MessageStore store, CancellationToken ct) =>
@@ -121,7 +122,8 @@ public static class MessageEndpoints
     /// plain names and files stay behind (listed by name), so forwarding never widens access or notifies anyone again.
     /// </summary>
     private static async Task<IResult> Forward(
-        Guid messageId, ForwardMessageRequest body, IUserDirectory directory, [AsParameters] MessageDependencies deps, CancellationToken ct)
+        Guid messageId, ForwardMessageRequest body, IUserDirectory directory, DlpService dlp, [AsParameters] MessageDependencies deps,
+        CancellationToken ct)
     {
         var (user, db, policy, _, _, _, _, _) = deps;
         if (!(await policy.ForMessageAsync(user, messageId, ct)).Has(Permission.Read)) return Problems.NotFound();
@@ -145,6 +147,8 @@ public static class MessageEndpoints
             : new ForwardSnapshot(original.Id, original.AuthorUserId, original.CreatedAt, await ForwardedCopyAsync(original, db, directory, ct));
 
         var draft = new NewMessage(id, to, note.Markdown, note.Mentions, null, [], snapshot);
+        if (await Problems.DlpGateAsync(dlp, note.Markdown + "\n" + snapshot.BodyMarkdown, body.AcknowledgeDlpWarnings == true, ct) is { } dlpProblem)
+            return dlpProblem;
         return await ExistingAsync(draft, deps, ct) ?? await InsertAsync(draft, deps, ct);
     }
 
@@ -212,7 +216,8 @@ public static class MessageEndpoints
         return TypedResults.Ok(dto);
     }
 
-    private static async Task<IResult> Send(RoomRef room, SendMessageRequest body, FilesOptions fileOptions, MessageDependencies deps, CancellationToken ct)
+    private static async Task<IResult> Send(
+        RoomRef room, SendMessageRequest body, FilesOptions fileOptions, DlpService dlp, MessageDependencies deps, CancellationToken ct)
     {
         var (user, db, policy, store, _, _, _, _) = deps;
         var permission = await policy.ForRoomAsync(user, room, ct);
@@ -225,6 +230,7 @@ public static class MessageEndpoints
 
         var draft = new NewMessage(id, room, content.Markdown, content.Mentions, body.ParentMessageId, [], null);
         if (await ExistingAsync(draft, deps, ct) is { } existing) return existing;
+        if (await Problems.DlpGateAsync(dlp, content.Markdown, body.AcknowledgeDlpWarnings == true, ct) is { } dlpProblem) return dlpProblem;
 
         if (body.ParentMessageId is { } parentId)
         {
@@ -247,18 +253,18 @@ public static class MessageEndpoints
         return await InsertAsync(draft with { Files = files }, deps, ct);
     }
 
-    /// <summary>A message about to be created, by <see cref="Send"/> or <see cref="Forward"/>.</summary>
-    private sealed record NewMessage(
+    /// <summary>A message about to be created, by <see cref="Send"/>, <see cref="Forward"/> or an incoming webhook.</summary>
+    internal sealed record NewMessage(
         Guid Id, RoomRef Room, string BodyMarkdown, ParsedMentions Mentions, Guid? ParentMessageId,
-        IReadOnlyList<AttachmentTarget> Files, ForwardSnapshot? Forward);
+        IReadOnlyList<AttachmentTarget> Files, ForwardSnapshot? Forward, string? BotName = null);
 
-    private sealed record ForwardSnapshot(Guid? MessageId, string UserId, DateTimeOffset CreatedAt, string BodyMarkdown);
+    internal sealed record ForwardSnapshot(Guid? MessageId, string UserId, DateTimeOffset CreatedAt, string BodyMarkdown);
 
     /// <summary>
     /// Handles a client retrying with an id that is already used: the same request gets the stored message back,
     /// anything else is a conflict. Returns null when the id is free.
     /// </summary>
-    private static async Task<IResult?> ExistingAsync(NewMessage draft, MessageDependencies deps, CancellationToken ct)
+    internal static async Task<IResult?> ExistingAsync(NewMessage draft, MessageDependencies deps, CancellationToken ct)
     {
         var existing = await deps.Db.Messages.AsNoTracking().SingleOrDefaultAsync(m => m.Id == draft.Id, ct);
         if (existing is null) return null;
@@ -272,7 +278,7 @@ public static class MessageEndpoints
             : Problems.Conflict("This message id is already in use.");
     }
 
-    private static async Task<IResult> InsertAsync(NewMessage draft, MessageDependencies deps, CancellationToken ct)
+    internal static async Task<IResult> InsertAsync(NewMessage draft, MessageDependencies deps, CancellationToken ct)
     {
         var (user, db, _, store, mentions, notifications, notifier, clock) = deps;
         var (id, room) = (draft.Id, draft.Room);
@@ -294,6 +300,7 @@ public static class MessageEndpoints
                 Sequence = sequence,
                 UpdatedSequence = sequence,
                 AuthorUserId = user.Id,
+                BotName = draft.BotName,
                 BodyMarkdown = draft.BodyMarkdown,
                 CreatedAt = now,
                 ForwardedBodyMarkdown = draft.Forward?.BodyMarkdown,
@@ -346,13 +353,15 @@ public static class MessageEndpoints
         return TypedResults.Created($"/api/v1/messages/{id}", dto);
     }
 
-    private static async Task<IResult> Edit(Guid messageId, EditMessageRequest body, [AsParameters] MessageDependencies deps, CancellationToken ct)
+    private static async Task<IResult> Edit(
+        Guid messageId, EditMessageRequest body, DlpService dlp, [AsParameters] MessageDependencies deps, CancellationToken ct)
     {
         var (user, db, policy, store, mentions, notifications, notifier, clock) = deps;
         var permission = await policy.ForMessageAsync(user, messageId, ct);
         if (!permission.Has(Permission.Read)) return Problems.NotFound();
         if (!permission.Has(Permission.Edit)) return Problems.Forbidden("Only the author can edit, and not after deletion.");
         if (!MessageContent.TrySanitize(body.BodyMarkdown, out var content, out var error)) return Problems.Invalid("bodyMarkdown", error);
+        if (await Problems.DlpGateAsync(dlp, content.Markdown, body.AcknowledgeDlpWarnings == true, ct) is { } dlpProblem) return dlpProblem;
 
         var room = RoomRef.Of(await db.Messages.AsNoTracking().SingleAsync(m => m.Id == messageId, ct));
         var workspaceId = room.Type == RoomType.Channel
@@ -523,5 +532,5 @@ public static class MessageEndpoints
     private static bool IsValidEmoji(string emoji) =>
         emoji.Length is > 0 and <= 32 && !emoji.Any(c => char.IsWhiteSpace(c) || char.IsControl(c) || c is '<' or '>' or '&' or '"' or '\'');
 
-    private sealed record AttachmentTarget(Guid Id, int CurrentVersionNo);
+    internal sealed record AttachmentTarget(Guid Id, int CurrentVersionNo);
 }

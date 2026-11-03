@@ -15,6 +15,7 @@ internal sealed class MessageConfiguration : IEntityTypeConfiguration<Message>
         b.Property(m => m.AuthorUserId).IsUserId();
         b.Property(m => m.DeletedByUserId).IsUserId();
         b.Property(m => m.ForwardedFromUserId).IsUserId();
+        b.Property(m => m.BotName).HasMaxLength(80);
 
         b.Property<NpgsqlTsVector>(SearchVectorProperty)
             .HasComputedColumnSql("to_tsvector('english', \"BodyMarkdown\" || ' ' || coalesce(\"ForwardedBodyMarkdown\", ''))", stored: true);

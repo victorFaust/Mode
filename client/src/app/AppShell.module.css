@@ -13,8 +13,8 @@
 }
 .shell[data-list-collapsed="true"] { grid-template-columns: var(--m-rail-width) 0 minmax(0, 1fr) auto; }
 .shell[data-list-collapsed="true"] .list { visibility: hidden; }
-.shell[data-section="files"] { grid-template-columns: var(--m-rail-width) 0 minmax(0, 1fr) auto; }
-.shell[data-section="files"] .list { display: none; }
+.shell[data-section="files"], .shell[data-section="admin"] { grid-template-columns: var(--m-rail-width) 0 minmax(0, 1fr) auto; }
+.shell[data-section="files"] .list, .shell[data-section="admin"] .list { display: none; }
 
 .banner { grid-area: banner; }
 
@@ -136,7 +136,7 @@
     grid-template-rows: auto minmax(0, 1fr) auto;
     grid-template-areas: "banner" "main" "rail";
   }
-  .shell[data-section="files"], .shell[data-list-collapsed="true"] { grid-template-columns: minmax(0, 1fr); }
+  .shell[data-section="files"], .shell[data-section="admin"], .shell[data-list-collapsed="true"] { grid-template-columns: minmax(0, 1fr); }
   .rail {
     flex-direction: row;
     justify-content: space-around;

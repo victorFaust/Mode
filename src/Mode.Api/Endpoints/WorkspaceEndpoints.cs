@@ -214,10 +214,10 @@ public static class WorkspaceEndpoints
         return TypedResults.NoContent();
     }
 
-    private static Task LockWorkspaceAsync(ModeDbContext db, Guid workspaceId, CancellationToken ct) =>
+    internal static Task LockWorkspaceAsync(ModeDbContext db, Guid workspaceId, CancellationToken ct) =>
         db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"Workspaces\" WHERE \"Id\" = {workspaceId} FOR UPDATE", ct);
 
-    private static async Task<bool> IsLastOwnerAsync(ModeDbContext db, Guid workspaceId, CancellationToken ct) =>
+    internal static async Task<bool> IsLastOwnerAsync(ModeDbContext db, Guid workspaceId, CancellationToken ct) =>
         await db.WorkspaceMembers.CountAsync(m => m.WorkspaceId == workspaceId && m.Role == WorkspaceRole.Owner, ct) <= 1;
 
     internal static UserDto ToUserDto(IReadOnlyDictionary<string, DirectoryUser> users, string id) =>

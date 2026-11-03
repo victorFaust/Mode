@@ -19,6 +19,18 @@ public static class AuditActions
     public const string ChannelArchived = "channel.archived";
     public const string ChannelMemberAdded = "channel.member_added";
     public const string ChannelMemberRemoved = "channel.member_removed";
+    public const string RetentionChanged = "retention.changed";
+    public const string RetentionApplied = "retention.applied";
+    public const string RetentionChecked = "retention.checked";
+    public const string HoldPlaced = "hold.placed";
+    public const string HoldReleased = "hold.released";
+    public const string DlpUpdated = "dlp.updated";
+    public const string WebhookCreated = "webhook.created";
+    public const string WebhookRotated = "webhook.rotated";
+    public const string WebhookRevoked = "webhook.revoked";
+    public const string ExportRequested = "compliance.export_requested";
+    public const string ExportDownloaded = "compliance.export_downloaded";
+    public const string AuditExported = "audit.exported";
 }
 
 /// <summary>Adds entries to the current unit of work; they are saved with the change they describe.</summary>

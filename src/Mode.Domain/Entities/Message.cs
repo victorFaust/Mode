@@ -19,6 +19,10 @@ public class Message
     public long UpdatedSequence { get; set; }
 
     public required string AuthorUserId { get; set; }
+
+    /// <summary>Set for webhook posts; the author is then "bot:{webhookId}" rather than a host user.</summary>
+    public string? BotName { get; set; }
+
     public required string BodyMarkdown { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? EditedAt { get; set; }

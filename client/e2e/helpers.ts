@@ -2,11 +2,12 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page } from "@playwright/test";
 
 /** Signs in through the dev shell, which gets a token from the mock issuer. */
-export async function signIn(page: Page, name = "Ada Okafor"): Promise<void> {
+export async function signIn(page: Page, name = "Ada Okafor", { admin = false } = {}): Promise<void> {
   await page.goto("/");
   await page.evaluate(() => sessionStorage.clear());
   await page.goto("/");
   await page.getByLabel("Sign in as").selectOption({ label: name });
+  if (admin) await page.getByLabel("Mode admin").check();
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("navigation", { name: "Mode" })).toBeVisible({ timeout: 60_000 });
 }

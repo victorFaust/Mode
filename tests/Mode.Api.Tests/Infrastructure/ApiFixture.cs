@@ -101,6 +101,8 @@ internal sealed class ApiFactory(
     : WebApplicationFactory<Program>
 {
     public static readonly string LinkSigningKey = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+    public static readonly string ComplianceSigningKey = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+    public const int WebhookPerMinute = 5;
 
     /// <summary>Presence turns away after this many seconds without activity in tests.</summary>
     public const int AwayAfterSeconds = 2;
@@ -119,6 +121,8 @@ internal sealed class ApiFactory(
         builder.UseSetting("Files:MaxSizeMb", "1");
         builder.UseSetting("Files:ProcessorCallbackBaseUrl", "http://localhost");
         builder.UseSetting("Jobs:Enabled", "false");
+        builder.UseSetting("Compliance:SigningKey", ComplianceSigningKey);
+        builder.UseSetting("Webhooks:PerMinute", WebhookPerMinute.ToString(System.Globalization.CultureInfo.InvariantCulture));
         builder.UseSetting("Presence:AwayAfterSeconds", AwayAfterSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
         builder.UseSetting("Presence:SweepSeconds", "1");
         // The fake sender never uses the keys; they only need to be present for push to count as configured.

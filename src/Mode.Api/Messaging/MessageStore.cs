@@ -105,7 +105,7 @@ public sealed class MessageStore(ModeDbContext db, IUserDirectory directory, Fil
             var deleted = m.DeletedAt is not null;
             return new MessageDto(
                 m.Id, RoomRef.Of(m), m.Sequence, m.UpdatedSequence, m.ParentMessageId,
-                WorkspaceEndpoints.ToUserDto(authors, m.AuthorUserId),
+                m.BotName is { } bot ? new UserDto(m.AuthorUserId, bot, null, null, true) : WorkspaceEndpoints.ToUserDto(authors, m.AuthorUserId),
                 deleted ? "" : m.BodyMarkdown,
                 m.CreatedAt, m.EditedAt, deleted, deleted && m.DeletedByUserId == m.AuthorUserId, m.ReplyCount, m.LastReplyAt,
                 deleted ? [] : Summarize(m.Reactions),
@@ -114,7 +114,8 @@ public sealed class MessageStore(ModeDbContext db, IUserDirectory directory, Fil
                 m.Pin is not null,
                 deleted || m.ForwardedBodyMarkdown is null ? null : new ForwardDto(
                     m.ForwardedFromMessageId, WorkspaceEndpoints.ToUserDto(authors, m.ForwardedFromUserId!),
-                    m.ForwardedFromCreatedAt!.Value, m.ForwardedBodyMarkdown));
+                    m.ForwardedFromCreatedAt!.Value, m.ForwardedBodyMarkdown),
+                m.BotName is not null);
         }).ToList();
     }
 

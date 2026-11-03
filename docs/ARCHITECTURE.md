@@ -191,7 +191,9 @@ erDiagram
     }
 ```
 
-`ReadMarker` is the last-read part of user settings. It is a separate table so updating it doesn't rewrite the preferences row. `ActivityItem` also has optional foreign keys to `Workspace`, `Channel` and `Conversation`; the diagram omits these edges for readability. `AuditLog` deliberately has no foreign keys so entries outlive what they describe.
+`ReadMarker` is the last-read part of user settings. It is a separate table so updating it doesn't rewrite the preferences row. `ActivityItem` also has optional foreign keys to `Workspace`, `Channel` and `Conversation`; the diagram omits these edges for readability. `AuditLog` deliberately has no foreign keys so entries outlive what they describe. Database triggers (`audit_logs_no_change`, `audit_logs_no_truncate`) make `AuditLogs` append-only.
+
+Governance tables (D46): `RetentionPolicies` (one per workspace, `KeepDays` or null for forever), `LegalHolds` (on a channel, chat or person; released, never deleted), `Webhooks` (group chat target, SHA-256 of the secret, rotate and revoke times), `DlpSettings` (a single row: blocked file types and message patterns as JSON) and `ComplianceExports` (filters, status, ZIP storage key, manifest hash and signature). `Message.BotName` is set on webhook posts, whose author id is `bot:{webhookId}`.
 
 Entities: [src/Mode.Domain/Entities](../src/Mode.Domain/Entities). Mapping: [src/Mode.Infrastructure/Data/Configurations](../src/Mode.Infrastructure/Data/Configurations).
 
@@ -259,6 +261,18 @@ Base path `/api/v1`. Every request carries `Authorization: Bearer <host JWT>`. E
 | Presence | `PUT /me/presence` | `{ status: "Available"\|"Busy"\|"DoNotDisturb"\|"Away", message? }` | `PresenceDto` |
 | | `GET /users/presence?ids=a,b` | | `PresenceDto[]` (only people you share a workspace or chat with) |
 | Search | `GET /search?q=&scope=All\|Messages\|Files\|People&channelId=&conversationId=&authorId=&from=&to=&limit=` | | `{ messages, files, people }`; snippets are `{ text, highlights: [{ start, length }] }` |
+| Admin (host admin role only; 403 otherwise) | `GET /admin/workspaces`, `PATCH /admin/workspaces/{id}` | `{ name?, description? }` | `AdminWorkspaceDto[]` / `AdminWorkspaceDto` (with member and channel counts and retention) |
+| | `GET /admin/workspaces/{id}/members`, `PATCH /admin/workspaces/{id}/members/{userId}` | `{ role }` | members / member (keeps the last owner) |
+| | `PUT /admin/workspaces/{id}/retention` | `{ keepDays: 1..36500 \| null }` | `AdminWorkspaceDto` |
+| | `GET /admin/audit?from=&to=&actor=&action=&workspaceId=&before=&limit=` | | `{ items: AuditEntryDto[], nextBefore }` (`action` matches a prefix) |
+| | `GET /admin/audit/export?…same filters` | | CSV, at most 100,000 rows, formula-safe; the export is itself audited |
+| | `GET / POST /admin/holds`, `POST /admin/holds/{id}/release` | `{ targetType: Channel\|Conversation\|User, targetId, reason }` | `LegalHoldDto` |
+| | `GET / PUT /admin/dlp` | `{ blockedExtensions, patterns: [{ name, pattern, action: Warn\|Block }] }` | `DlpSettingsDto` |
+| | `GET / POST /admin/webhooks`, `POST /admin/webhooks/{id}/rotate`, `DELETE /admin/webhooks/{id}` | `{ conversationId, name }` | `WebhookDto`; create and rotate return the secret once |
+| | `GET / POST /admin/exports`, `GET /admin/exports/{id}/download` | `{ userId?, channelId?, conversationId?, from?, to? }` | `202 ExportDto`; download is a ZIP and is audited |
+| Webhooks | `POST /hooks/{webhookId}` (anonymous; header `X-Mode-Webhook-Key`) | `{ text, id? }` | `201 MessageDto` with `isBot`; `401` for unknown, revoked or wrong key; `429` over 30 a minute per hook |
+
+Sending, editing and forwarding accept `acknowledgeDlpWarnings`. When data-loss rules match, the response is `422 { code: "dlp_blocked", rules }` or, until the sender confirms, `409 { code: "dlp_warning", rules }`.
 
 Core shapes:
 

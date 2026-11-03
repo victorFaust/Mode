@@ -26,6 +26,11 @@ public sealed class ModeDbContext(DbContextOptions<ModeDbContext> options) : DbC
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
     public DbSet<ActivityItem> ActivityItems => Set<ActivityItem>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<RetentionPolicy> RetentionPolicies => Set<RetentionPolicy>();
+    public DbSet<LegalHold> LegalHolds => Set<LegalHold>();
+    public DbSet<Webhook> Webhooks => Set<Webhook>();
+    public DbSet<DlpSettings> DlpSettings => Set<DlpSettings>();
+    public DbSet<ComplianceExport> ComplianceExports => Set<ComplianceExport>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(ModeDbContext).Assembly);

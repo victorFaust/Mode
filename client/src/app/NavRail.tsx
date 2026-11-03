@@ -1,4 +1,4 @@
-import { Bell, FileText, Hash, MessageSquare, Search, Settings } from "lucide-react";
+import { Bell, FileText, Hash, MessageSquare, Search, Settings, Shield } from "lucide-react";
 import { useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { PresenceStatus } from "../api/client";
@@ -21,7 +21,7 @@ const statuses: PresenceStatus[] = ["Available", "Busy", "DoNotDisturb", "Away"]
 
 export function NavRail() {
   const controller = useController();
-  const { section, activityUnread, chatUnread, channelUnread, me, myPresence, searching } = useMode(useShallow((s) => {
+  const { section, activityUnread, chatUnread, channelUnread, me, myPresence, searching, isAdmin } = useMode(useShallow((s) => {
     const unread = Object.values(s.unread).filter((u) => !u.isMuted || u.mentionCount > 0);
     return {
       section: s.section,
@@ -31,11 +31,13 @@ export function NavRail() {
       me: s.me,
       myPresence: s.me ? s.presence[s.me.id] : undefined,
       searching: s.searchQuery !== null,
+      isAdmin: s.isAdmin,
     };
   }));
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
-  const counts: Record<Section, number> = { activity: activityUnread, chat: chatUnread, channels: channelUnread, files: 0 };
+  const counts: Record<Section, number> = { activity: activityUnread, chat: chatUnread, channels: channelUnread, files: 0, admin: 0 };
+  const shown = isAdmin ? [...items, { section: "admin" as const, label: "Admin", icon: Shield }] : items;
 
   const open = (target: Section) => {
     controller.openSection(target);
@@ -44,7 +46,7 @@ export function NavRail() {
 
   return (
     <nav className={styles.rail} aria-label="Mode">
-      {items.map(({ section: target, label, icon: Icon }) => (
+      {shown.map(({ section: target, label, icon: Icon }) => (
         <button key={target} type="button" className={styles.railItem} aria-current={section === target && !searching ? "page" : undefined}
           onClick={() => open(target)}>
           <Icon size={20} aria-hidden />

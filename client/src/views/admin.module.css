@@ -1,0 +1,36 @@
+.page { padding: var(--m-space-7) var(--m-space-8); max-width: 1100px; width: 100%; margin: 0 auto; overflow: auto; height: 100%; }
+.title { font-size: var(--m-text-display); line-height: var(--m-lh-display); font-weight: 600; margin-bottom: var(--m-space-5); }
+.tabs { display: flex; gap: var(--m-space-2); border-bottom: 1px solid var(--m-border); margin-bottom: var(--m-space-5); flex-wrap: wrap; }
+.tab {
+  padding: var(--m-space-3) var(--m-space-4); border: 0; background: none; color: var(--m-text-muted); font: inherit; cursor: pointer;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.tab[aria-selected="true"] { color: inherit; font-weight: 600; border-bottom-color: var(--m-text-accent); }
+.tab:focus-visible { outline: 2px solid var(--m-text-accent); outline-offset: -2px; }
+.panel { display: flex; flex-direction: column; gap: var(--m-space-4); }
+.stack { display: flex; flex-direction: column; gap: var(--m-space-4); }
+.filters { display: flex; flex-wrap: wrap; gap: var(--m-space-4); align-items: flex-end; }
+.filters > * { min-width: 180px; }
+.inline { display: flex; align-items: center; gap: var(--m-space-3); flex-wrap: wrap; }
+.field { display: flex; flex-direction: column; gap: var(--m-space-2); }
+.field label, .fieldset legend { font-weight: 600; }
+.select, .date, .number {
+  padding: var(--m-space-3); border: 1px solid var(--m-border); border-radius: var(--m-radius-md);
+  background: var(--m-surface-raised); color: inherit; font: inherit;
+}
+.number { width: 7em; }
+.table { width: 100%; border-collapse: collapse; }
+.table th, .table td { text-align: left; padding: var(--m-space-3); border-bottom: 1px solid var(--m-border); vertical-align: top; }
+.table th { color: var(--m-text-muted); font-weight: 600; }
+.details { font-family: var(--m-font-mono, monospace); font-size: var(--m-text-caption); word-break: break-all; max-width: 320px; }
+.muted { color: var(--m-text-muted); }
+.error { color: var(--m-danger); }
+.fieldset { border: 1px solid var(--m-border); border-radius: var(--m-radius-lg); padding: var(--m-space-5); display: flex; flex-direction: column; gap: var(--m-space-4); }
+.patternRow { display: grid; grid-template-columns: 1fr 2fr auto auto; gap: var(--m-space-3); align-items: end; }
+.secret { display: grid; grid-template-columns: auto 1fr; gap: var(--m-space-3); }
+.secret dt { font-weight: 600; }
+.secret code { word-break: break-all; }
+@media (max-width: 720px) {
+  .page { padding: var(--m-space-5); }
+  .patternRow { grid-template-columns: 1fr; }
+}

@@ -58,6 +58,7 @@ export const MessageItem = memo(function MessageItem({ message, grouped, canMana
       <div style={{ minWidth: 0 }}>
         <div className={grouped ? "m-visually-hidden" : styles.meta} id={titleId}>
           <span className={styles.author}>{message.author.displayName}</span>{" "}
+          {message.isBot && <span className={styles.botTag}>Bot</span>}{message.isBot && " "}
           <time className={styles.time} dateTime={message.createdAt} title={formatFull(message.createdAt)}>
             {pending?.state === "sending" ? "Sending…" : formatTime(message.createdAt)}
           </time>
@@ -113,7 +114,7 @@ export const MessageItem = memo(function MessageItem({ message, grouped, canMana
 
         {pending?.state === "failed" && (
           <div className={styles.failed} role="alert">
-            <AlertCircle size={16} aria-hidden /> Not sent.
+            <AlertCircle size={16} aria-hidden /> {pending.error ?? "Not sent."}
             <button type="button" className={styles.linkButton} onClick={() => void controller.retry(message)}>Retry</button>
             <button type="button" className={styles.linkButton} onClick={() => controller.discard(message)}>Delete</button>
           </div>

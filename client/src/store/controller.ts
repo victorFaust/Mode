@@ -1,5 +1,5 @@
 import {
-  ok, roomKey, type Api, type Channel, type Conversation, type FileDto, type Message, type MessageVersion, type PresenceStatus,
+  ApiError, ok, roomKey, type Api, type Channel, type Conversation, type FileDto, type Message, type MessageVersion, type PresenceStatus,
   type RoomRef, type User,
 } from "../api/client";
 import { RealtimeService, type RealtimeHandlers } from "../realtime/realtime";
@@ -85,6 +85,7 @@ export class ModeController {
       this.set({
         me: me.user,
         isGuest: me.isGuest,
+        isAdmin: me.isAdmin,
         workspaces,
         channels: Object.fromEntries(workspaces.map((w, i) => [w.id, channelLists[i]])),
         conversations,
@@ -526,6 +527,7 @@ export class ModeController {
       mentions: [],
       files: [],
       isPinned: false,
+      isBot: false,
       pending: { state: "sending", send },
     };
     this.set((s) => applyMessage(s, local));
@@ -556,24 +558,53 @@ export class ModeController {
   /** Sends with the client-generated id, so a retry after a lost response never duplicates the message. */
   private async deliver(local: LocalMessage): Promise<void> {
     const { send } = local.pending!;
-    const body = { id: local.id, bodyMarkdown: send.bodyMarkdown, parentMessageId: send.parentMessageId, fileIds: send.fileIds };
+    const body = {
+      id: local.id, bodyMarkdown: send.bodyMarkdown, parentMessageId: send.parentMessageId, fileIds: send.fileIds,
+      acknowledgeDlpWarnings: send.acknowledgeDlpWarnings,
+    };
     try {
       const saved = local.room.type === "Channel"
         ? await ok(this.api.POST("/api/v1/channels/{channelId}/messages", { params: { path: { channelId: local.room.id } }, body }))
         : await ok(this.api.POST("/api/v1/conversations/{conversationId}/messages", { params: { path: { conversationId: local.room.id } }, body }));
       this.set((s) => applyMessage(s, saved));
       this.scheduleMarkRead(local.room);
-    } catch {
-      this.set((s) => applyMessage(s, { ...local, pending: { state: "failed", send } }));
+    } catch (error) {
+      const problem = error instanceof ApiError ? error.problem : undefined;
+      const failed: LocalMessage = {
+        ...local, pending: { state: "failed", send, error: problem?.code === "dlp_blocked" ? (error as Error).message : undefined },
+      };
+      this.set((s) => applyMessage(s, failed));
+      if (problem?.code === "dlp_warning") {
+        this.set({
+          dlpWarning: {
+            rules: problem.rules ?? [],
+            confirm: () => void this.retry({ ...failed, pending: { state: "failed", send: { ...send, acknowledgeDlpWarnings: true } } }),
+          },
+        });
+      }
     }
   }
 
-  async edit(message: Message, text: string, picked: PickedMention[]): Promise<void> {
-    const saved = await ok(this.api.PATCH("/api/v1/messages/{messageId}", {
-      params: { path: { messageId: message.id } }, body: { bodyMarkdown: toWireMarkdown(text, picked) },
-    }));
-    this.set((s) => applyMessage(s, saved));
-    this.set({ editingMessageId: null });
+  dismissDlpWarning(): void {
+    this.set({ dlpWarning: null });
+  }
+
+  async edit(message: Message, text: string, picked: PickedMention[], acknowledgeDlpWarnings = false): Promise<void> {
+    try {
+      const saved = await ok(this.api.PATCH("/api/v1/messages/{messageId}", {
+        params: { path: { messageId: message.id } }, body: { bodyMarkdown: toWireMarkdown(text, picked), acknowledgeDlpWarnings },
+      }));
+      this.set((s) => applyMessage(s, saved));
+      this.set({ editingMessageId: null });
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.problem?.code !== "dlp_warning") throw error;
+      this.set({
+        dlpWarning: {
+          rules: error.problem.rules ?? [],
+          confirm: () => void this.edit(message, text, picked, true).catch((e: Error) => this.toastError(e.message)),
+        },
+      });
+    }
   }
 
   async remove(message: Message): Promise<void> {
