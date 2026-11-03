@@ -113,6 +113,11 @@ namespace Mode.Infrastructure.Data.Migrations
                     b.Property<string>("DataJson")
                         .HasColumnType("jsonb");
 
+                    b.Property<string>("Hash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character(64)")
+                        .IsFixedLength();
+
                     b.Property<string>("IpAddress")
                         .HasMaxLength(45)
                         .HasColumnType("character varying(45)");
@@ -132,6 +137,10 @@ namespace Mode.Infrastructure.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("At");
+
+                    b.HasIndex("Id")
+                        .HasDatabaseName("IX_AuditLogs_Unsealed")
+                        .HasFilter("\"Hash\" IS NULL");
 
                     b.HasIndex("ActorUserId", "At");
 

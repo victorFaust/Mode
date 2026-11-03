@@ -32,6 +32,7 @@ public static class AuditActions
     public const string ExportRequested = "compliance.export_requested";
     public const string ExportDownloaded = "compliance.export_downloaded";
     public const string AuditExported = "audit.exported";
+    public const string AuditVerified = "audit.verified";
 }
 
 /// <summary>Adds entries to the current unit of work; they are saved with the change they describe.</summary>

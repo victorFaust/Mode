@@ -874,6 +874,65 @@
         }
       }
     },
+    "/api/v1/admin/audit/verify": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditVerifyResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/holds": {
       "get": {
         "tags": [
@@ -5464,6 +5523,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
           }
         }
       }
@@ -6974,6 +7043,38 @@
             }
           },
           "nextBefore": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AuditVerifyResult": {
+        "required": [
+          "checked",
+          "intact",
+          "unsealed"
+        ],
+        "type": "object",
+        "properties": {
+          "intact": {
+            "type": "boolean"
+          },
+          "checked": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "brokenAtId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "unsealed": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "lastSealedId": {
             "type": "integer",
             "format": "int64",
             "nullable": true

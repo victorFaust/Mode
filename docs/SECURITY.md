@@ -34,7 +34,7 @@ flowchart LR
 | Mode administrator (host role) | Admin pages | Abuse of exports, holds, DLP | Every admin action is audited; the audit log is append-only in the database; exports are signed and their downloads audited. |
 | Webhook holder | Post to one group chat | Key theft, flooding | 256-bit key stored as a hash, constant-time compare, rotate and revoke, 30 posts a minute per hook, DLP blocks apply. |
 | File processor | Read originals, write previews | Compromise turning into wider access | Only short-lived signed links scoped to one version and purpose; not reachable from outside (`/internal` is not routed by Caddy). |
-| Server or database operator | Everything on the box | Tampering, key theft | Out of scope for the app; mitigated by bank controls. The audit trigger stops casual edits but not a superuser (accepted risk R4). |
+| Server or database operator | Everything on the box | Tampering, key theft | Out of scope for the app; mitigated by bank controls. The audit trigger stops casual edits, and the HMAC chain exposes edits by a superuser (F8, residual risk R4). |
 
 ## 2. Review findings (Prompt 10)
 
@@ -48,6 +48,8 @@ Each finding has a test that failed on the code before the fix (verified by runn
 | F4 | Medium | No request body limit on JSON endpoints beyond Kestrel's 30 MB default, so large bodies could be used to tie up memory. | `SecurityTests.Oversized_json_bodies_are_refused` | 1 MB cap (413) for everything except the two file-content endpoints, which keep `Files:MaxSizeMb`. |
 | F5 | Low | Behind a proxy, the audit log and per-IP limits would see the proxy's address. | Deployment review | `ForwardedHeaders:Enabled` (on in the production compose file) trusts `X-Forwarded-For` from Caddy; the API is reachable only on the private network. |
 | F6 | Low | Jobs that exhausted their retries were logged at the same Warning level as a first failure, so "gave up" could not be alerted on. | Monitoring review | Logged at Error with "gave up after N attempts". |
+| F7 | Medium | (Was risk R6.) Searches had no time limit; a costly query could hold a database connection for as long as PostgreSQL took. | `SearchTimeoutTests.Slow_searches_are_cut_off_but_caller_cancellation_still_propagates` | Each search is cancelled after `Search:TimeoutSeconds` (5); PostgreSQL is told to stop the query and the caller gets 503 "Search took too long". |
+| F8 | Medium | (Was risk R4.) A database superuser could disable the append-only trigger and edit or delete audit entries without trace. | `SecurityTests.Audit_log_is_sealed_and_tampering_is_detected` (edits a sealed row as superuser; verification reports the exact entry) | Tamper-evident chain: a sealer (every 60 s) sets each entry's `Hash` = HMAC-SHA256(`Audit:ChainKey`, previous hash + entry). The trigger allows exactly that one change. Admin, Audit log, **Check integrity** (`POST /admin/audit/verify`) recomputes the chain and names the first broken entry. The latest hash is also written to the application log as an outside anchor. |
 
 Checked and already handled (tests that cover them):
 
@@ -74,9 +76,9 @@ Checked and already handled (tests that cover them):
 | R1 | A leaked signed download link works for anyone for up to 5 minutes. | Links are opened by the browser directly (no bearer token), so they can't be tied to a person without cookies. | Short lifetime (`Files:DownloadLinkMinutes`), not logged, generated only after an access check. |
 | R2 | A deactivated person can keep a live connection for up to about 6 minutes (directory cache plus one check), and can use REST until the directory cache expires (5 minutes). | Reading the host directory on every request would load the host SQL Server. | Lower `UserDirectory:CacheMinutes` and `Realtime:RecheckSeconds` if needed; the host should also stop issuing tokens immediately. |
 | R3 | Bearer tokens can be replayed until they expire if stolen from a browser. | Inherent to bearer tokens issued by the host. | Short token lifetimes in the host; TLS only; tokens kept in memory by the client, not in storage. |
-| R4 | A database superuser can disable the audit trigger. | Database-level protection only. | Restrict database access; ship audit entries to the bank's log platform for an independent copy. |
+| R4 | A database superuser can still delete or edit audit entries; this is now detected (F8) but not prevented. Entries newer than the last seal (up to about 2 minutes) and deletion of the newest entries are only caught by comparing with the hash anchors in the application log. | Prevention needs storage the server can't write to. | Ship logs off the server; run Check integrity weekly; keep `AUDIT_CHAIN_KEY` outside the server. |
 | R5 | One server: no high availability. Realtime connection state is in memory. | Deliberate for the first release (see DECISIONS). | Nightly backups, 4-hour restore target; scaling out needs a SignalR backplane. |
-| R6 | Search runs against PostgreSQL full-text with a 200-character query limit and a 30-a-minute rate limit, but no per-query statement timeout. | A tuned timeout needs production data volumes to set. | Rate limit; add `statement_timeout` for the search role once production volumes are known. |
+| R6 | Closed by F7 (search time limit). | | |
 | R7 | Load capacity at 1,000 people is not yet measured on production-sized hardware (laptop run at 200 passed with no drops). | No server available yet. | Release gate G9 below. |
 
 ## 4. Go / no-go checklist
@@ -85,7 +87,7 @@ Checked and already handled (tests that cover them):
 | --- | --- | --- |
 | G1 | All .NET, client unit and end-to-end tests pass on the release commit. | Done (see PR) |
 | G2 | Dependency audits clean (.NET, npm, pip). | Done 2026-11-03 |
-| G3 | Every finding F1 to F6 fixed with a passing test. | Done |
+| G3 | Every finding F1 to F8 fixed with a passing test. | Done |
 | G4 | Production `.env` filled; secrets generated fresh, stored in the bank's secret store, never reused from development. | To do at deployment |
 | G5 | `AUTH_ISSUER`, `AUTH_AUDIENCE` and signing keys confirmed with the host team; a real host token signs in, a token for another audience is refused. | To do |
 | G6 | Host directory login is read-only (`mode_reader`, SELECT on the users table only) with `Encrypt=True`. | To do |
@@ -93,7 +95,7 @@ Checked and already handled (tests that cover them):
 | G8 | Backups running nightly and copied off the server; one full restore drill done on a test server. | To do |
 | G9 | Load test with 1,000 people for 10 minutes on a staging server of production size meets the pass criteria in MONITORING.md. | To do |
 | G10 | Monitoring and alerts from MONITORING.md wired up and tested (stop the API, see the page). | To do |
-| G11 | Risks R1 to R7 accepted in writing by the system owner. | To do |
+| G11 | Risks R1 to R5 and R7 accepted in writing by the system owner. | To do |
 | G12 | Rollback rehearsed once on staging (deploy, roll back, data intact). | To do |
 
 **Go** when G1 to G12 are all done. Today G1 to G3 are done; the rest need the target server and the host team.

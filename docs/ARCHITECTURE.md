@@ -266,6 +266,7 @@ Base path `/api/v1`. Every request carries `Authorization: Bearer <host JWT>`. E
 | | `PUT /admin/workspaces/{id}/retention` | `{ keepDays: 1..36500 \| null }` | `AdminWorkspaceDto` |
 | | `GET /admin/audit?from=&to=&actor=&action=&workspaceId=&before=&limit=` | | `{ items: AuditEntryDto[], nextBefore }` (`action` matches a prefix) |
 | | `GET /admin/audit/export?…same filters` | | CSV, at most 100,000 rows, formula-safe; the export is itself audited |
+| | `POST /admin/audit/verify` | | `{ intact, checked, brokenAtId, unsealed, lastSealedId }` (seals what is due, then recomputes the HMAC chain) |
 | | `GET / POST /admin/holds`, `POST /admin/holds/{id}/release` | `{ targetType: Channel\|Conversation\|User, targetId, reason }` | `LegalHoldDto` |
 | | `GET / PUT /admin/dlp` | `{ blockedExtensions, patterns: [{ name, pattern, action: Warn\|Block }] }` | `DlpSettingsDto` |
 | | `GET / POST /admin/webhooks`, `POST /admin/webhooks/{id}/rotate`, `DELETE /admin/webhooks/{id}` | `{ conversationId, name }` | `WebhookDto`; create and rotate return the secret once |

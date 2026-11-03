@@ -1,4 +1,4 @@
-import { Download, RotateCw, Shield } from "lucide-react";
+import { Download, RotateCw, Shield, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import {
   ok, type AdminWorkspace, type AuditEntry, type ComplianceExport, type DlpPattern, type HoldTarget, type LegalHold, type Webhook,
@@ -159,6 +159,20 @@ function AuditTab() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => void load(), []);
 
+  const [integrity, setIntegrity] = useState<string | null>(null);
+
+  const verify = async () => {
+    try {
+      const r = await ok(controller.api.POST("/api/v1/admin/audit/verify"));
+      const unsealed = r.unsealed > 0 ? ` ${r.unsealed} older entries are not sealed; check the sealer is running.` : "";
+      setIntegrity(r.intact
+        ? `Intact: ${r.checked} sealed entries check out.${unsealed}`
+        : `Broken at entry ${r.brokenAtId}: it or an earlier entry was changed or removed. Escalate to security.${unsealed}`);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
   const exportCsv = async () => {
     try {
       const blob = await ok(controller.api.GET("/api/v1/admin/audit/export", { params: { query: query() }, parseAs: "blob" }));
@@ -178,8 +192,10 @@ function AuditTab() {
         <div className={styles.inline}>
           <Button type="submit" variant="primary">Filter</Button>
           <Button type="button" onClick={() => void exportCsv()}><Download size={16} aria-hidden /> Export CSV</Button>
+          <Button type="button" onClick={() => void verify()}><ShieldCheck size={16} aria-hidden /> Check integrity</Button>
         </div>
       </form>
+      {integrity && <p role="status">{integrity}</p>}
       <Status error={error} />
       {loaded && items.length === 0 && !error && <p className={styles.muted}>No entries match.</p>}
       {items.length > 0 && (

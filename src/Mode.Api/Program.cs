@@ -55,6 +55,11 @@ builder.Services.AddScoped(sp => CurrentUser.FromPrincipal(
     ?? throw new InvalidOperationException("No HTTP context for the current user.")));
 builder.Services.AddScoped<AccessPolicy>();
 builder.Services.AddScoped<IAuditLog, AuditLogWriter>();
+builder.Services.AddOptions<AuditOptions>().BindConfiguration(AuditOptions.SectionName)
+    .Validate(o => o.KeyBytes() is not null, "Audit:ChainKey must be base64 of at least 32 bytes.")
+    .ValidateOnStart();
+builder.Services.AddScoped<AuditSealer>();
+if (!openApiExport) builder.Services.AddHostedService<AuditSealWorker>();
 builder.Services.AddScoped<MessageStore>();
 builder.Services.AddScoped<MentionProcessor>();
 builder.Services.AddScoped<AccessRevoker>();

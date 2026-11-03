@@ -71,6 +71,7 @@ public static class AdminEndpoints
 
         admin.MapGet("/audit", ListAudit).Produces<AuditPage>();
         admin.MapGet("/audit/export", ExportAudit).Produces(StatusCodes.Status200OK, contentType: "text/csv");
+        admin.MapPost("/audit/verify", VerifyAudit).Produces<AuditVerifyResult>();
 
         admin.MapGet("/holds", ListHolds).Produces<LegalHoldDto[]>();
         admin.MapPost("/holds", PlaceHold).Produces<LegalHoldDto>(StatusCodes.Status201Created);
@@ -230,6 +231,16 @@ public static class AdminEndpoints
         await db.SaveChangesAsync(ct);
         return TypedResults.File(Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(csv.ToString())).ToArray(),
             "text/csv", $"mode-audit-{DateTime.UtcNow:yyyyMMdd-HHmm}.csv");
+    }
+
+    /// <summary>Seals anything due, then re-computes the whole chain.</summary>
+    private static async Task<IResult> VerifyAudit(AuditSealer sealer, ModeDbContext db, IAuditLog audit, CancellationToken ct)
+    {
+        await sealer.SealAsync(ct);
+        var result = await sealer.VerifyAsync(ct);
+        audit.Record(AuditActions.AuditVerified, "audit", null, data: result);
+        await db.SaveChangesAsync(ct);
+        return TypedResults.Ok(result);
     }
 
     /// <summary>Quotes every field and neutralizes spreadsheet formulas (CSV injection).</summary>

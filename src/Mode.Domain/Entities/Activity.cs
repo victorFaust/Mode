@@ -33,6 +33,9 @@ public class AuditLog
     public Guid? WorkspaceId { get; set; }
     public string? DataJson { get; set; }
     public string? IpAddress { get; set; }
+
+    /// <summary>HMAC chain link set by the audit sealer: HMAC(key, previous Hash + this entry). Null until sealed.</summary>
+    public string? Hash { get; set; }
 }
 
 /// <summary>Mode-only preferences keyed by the host user id. There is no Mode user table.</summary>

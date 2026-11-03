@@ -249,3 +249,5 @@ Findings, tests, accepted risks and the go/no-go list are in [SECURITY.md](SECUR
 - **JSON bodies are capped at 1 MB**; file bytes keep their own limit.
 - **Deployment is one Linux server with Docker Compose and Caddy** ([DEPLOYMENT.md](DEPLOYMENT.md)). Migrations run from an EF bundle as a separate step, never at API startup. Images are tagged with the release version so rollback is a setting change.
 - **The load test is our own small .NET tool** (`tools/Mode.LoadTest`) using the SignalR client the tests already use, instead of adding k6 or NBomber.
+- **Searches time out** after `Search:TimeoutSeconds` (5) with a 503, closing risk R6.
+- **The audit log is tamper-evident** (reduces R4). A background sealer chains entries with HMAC-SHA256 under `Audit:ChainKey`, a new required secret kept outside the database; the trigger permits only setting `Hash` once (`AuditSeal` migration). Sealing runs a minute behind so entries from transactions still in flight keep Id order; anything left unsealed later is reported by the check. A hash chain was chosen over writing to external append-only storage because it needs no new infrastructure.

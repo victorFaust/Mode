@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Mode.Api.Realtime;
 using Mode.Api.Tests.Infrastructure;
 
@@ -134,5 +135,60 @@ public sealed class SecurityTests(ApiFixture api)
         Assert.EndsWith(".txt", disposition.FileNameStar);
         Assert.Single(download.Content.Headers.GetValues("Content-Disposition"));
         Assert.DoesNotContain(disposition.Parameters, p => p.Name == "x");
+    }
+
+    [Fact]
+    public async Task Audit_log_is_sealed_and_tampering_is_detected()
+    {
+        using var admin = api.ClientFor(api.NewUser(), "mode-admin");
+        await ApiFixture.CreateWorkspaceAsync(admin, "Sealed");
+
+        var first = await admin.PostJsonOkAsync("/api/v1/admin/audit/verify", new { });
+        Assert.True(first.GetProperty("intact").GetBoolean());
+        Assert.True(first.GetProperty("checked").GetInt64() > 0);
+
+        await using var db = api.CreateDbContext();
+        var target = await db.AuditLogs.Where(a => a.Hash != null).OrderByDescending(a => a.Id).FirstAsync();
+        // Sealing is the only update allowed, and only once.
+        await Assert.ThrowsAsync<Npgsql.PostgresException>(() =>
+            db.AuditLogs.Where(a => a.Id == target.Id).ExecuteUpdateAsync(s => s.SetProperty(a => a.Hash, new string('0', 64))));
+
+        // A database superuser can switch the trigger off; the chain still exposes the edit.
+        async Task SetActionAsync(string action) => await db.Database.ExecuteSqlInterpolatedAsync($"""
+            ALTER TABLE "AuditLogs" DISABLE TRIGGER audit_logs_no_change;
+            UPDATE "AuditLogs" SET "Action" = {action} WHERE "Id" = {target.Id};
+            ALTER TABLE "AuditLogs" ENABLE TRIGGER audit_logs_no_change;
+            """);
+        await SetActionAsync("workspace.tampered");
+        try
+        {
+            var broken = await admin.PostJsonOkAsync("/api/v1/admin/audit/verify", new { });
+            Assert.False(broken.GetProperty("intact").GetBoolean());
+            Assert.Equal(target.Id, broken.GetProperty("brokenAtId").GetInt64());
+        }
+        finally
+        {
+            await SetActionAsync(target.Action);
+        }
+        Assert.True((await admin.PostJsonOkAsync("/api/v1/admin/audit/verify", new { })).GetProperty("intact").GetBoolean());
+    }
+}
+
+public sealed class SearchTimeoutTests
+{
+    [Fact]
+    public async Task Slow_searches_are_cut_off_but_caller_cancellation_still_propagates()
+    {
+        var slow = await Mode.Api.Endpoints.SearchEndpoints.WithTimeoutAsync(
+            async ct => { await Task.Delay(TimeSpan.FromSeconds(10), ct); return "done"; }, TimeSpan.FromMilliseconds(50), CancellationToken.None);
+        Assert.Null(slow);
+
+        var fast = await Mode.Api.Endpoints.SearchEndpoints.WithTimeoutAsync(
+            ct => Task.FromResult("done"), TimeSpan.FromSeconds(5), CancellationToken.None);
+        Assert.Equal("done", fast);
+
+        using var caller = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Mode.Api.Endpoints.SearchEndpoints.WithTimeoutAsync(
+            async ct => { await Task.Delay(TimeSpan.FromSeconds(10), ct); return "done"; }, TimeSpan.FromSeconds(5), caller.Token));
     }
 }

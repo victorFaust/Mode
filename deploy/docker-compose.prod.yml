@@ -43,6 +43,7 @@ services:
       Files__ProcessorCallbackBaseUrl: http://api:8080
       ClamAv__Host: clamav
       Compliance__SigningKey: ${COMPLIANCE_SIGNING_KEY:?set COMPLIANCE_SIGNING_KEY}
+      Audit__ChainKey: ${AUDIT_CHAIN_KEY:?set AUDIT_CHAIN_KEY}
       Push__Subject: ${PUSH_SUBJECT:-}
       Push__PublicKey: ${VAPID_PUBLIC_KEY:-}
       Push__PrivateKey: ${VAPID_PRIVATE_KEY:-}

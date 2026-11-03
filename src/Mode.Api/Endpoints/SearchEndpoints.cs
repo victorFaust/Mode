@@ -42,11 +42,39 @@ public static class SearchEndpoints
 
     public static RouteGroupBuilder MapSearchEndpoints(this RouteGroupBuilder api)
     {
-        api.MapGet("/search", Search).WithTags("Search").RequireRateLimiting(Security.RateLimits.Search).Produces<SearchResponse>();
+        api.MapGet("/search", Search).WithTags("Search").RequireRateLimiting(Security.RateLimits.Search).Produces<SearchResponse>()
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
         return api;
     }
 
     private static async Task<IResult> Search(
+        string? q, SearchScope? scope, Guid? channelId, Guid? conversationId, string? authorId, DateTimeOffset? from, DateTimeOffset? to,
+        int? limit, CurrentUser user, ModeDbContext db, AccessPolicy policy, IUserDirectory directory, IConfiguration config, CancellationToken ct)
+    {
+        var timeout = TimeSpan.FromSeconds(Math.Clamp(config.GetValue("Search:TimeoutSeconds", 5.0), 0.1, 60));
+        return await WithTimeoutAsync(
+            token => SearchCoreAsync(q, scope, channelId, conversationId, authorId, from, to, limit, user, db, policy, directory, token),
+            timeout, ct)
+            ?? TypedResults.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "Search took too long",
+                detail: "Try fewer or more specific words, or filter by a chat or dates.");
+    }
+
+    /// <summary>Runs <paramref name="work"/> with a time limit; null when the limit (not the caller) cancelled it.</summary>
+    internal static async Task<T?> WithTimeoutAsync<T>(Func<CancellationToken, Task<T>> work, TimeSpan timeout, CancellationToken ct) where T : class
+    {
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        limit.CancelAfter(timeout);
+        try
+        {
+            return await work(limit.Token);
+        }
+        catch (Exception e) when (limit.IsCancellationRequested && !ct.IsCancellationRequested && e is OperationCanceledException or InvalidOperationException or Npgsql.NpgsqlException)
+        {
+            return null;
+        }
+    }
+
+    private static async Task<IResult> SearchCoreAsync(
         string? q, SearchScope? scope, Guid? channelId, Guid? conversationId, string? authorId, DateTimeOffset? from, DateTimeOffset? to,
         int? limit, CurrentUser user, ModeDbContext db, AccessPolicy policy, IUserDirectory directory, CancellationToken ct)
     {
