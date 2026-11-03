@@ -106,6 +106,7 @@ internal sealed class ApiFactory(
 {
     public static readonly string LinkSigningKey = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
     public static readonly string ComplianceSigningKey = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+    public static readonly string AuditChainKey = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
     public const int WebhookPerMinute = 5;
 
     /// <summary>Presence turns away after this many seconds without activity in tests.</summary>
@@ -126,6 +127,9 @@ internal sealed class ApiFactory(
         builder.UseSetting("Files:ProcessorCallbackBaseUrl", "http://localhost");
         builder.UseSetting("Jobs:Enabled", "false");
         builder.UseSetting("Compliance:SigningKey", ComplianceSigningKey);
+        builder.UseSetting("Audit:ChainKey", AuditChainKey);
+        builder.UseSetting("Audit:SealDelaySeconds", "0");
+        builder.UseSetting("Audit:SealIntervalSeconds", "3600");
         builder.UseSetting("Webhooks:PerMinute", WebhookPerMinute.ToString(System.Globalization.CultureInfo.InvariantCulture));
         builder.UseSetting("Presence:AwayAfterSeconds", AwayAfterSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
         builder.UseSetting("Presence:SweepSeconds", "1");

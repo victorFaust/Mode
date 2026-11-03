@@ -126,6 +126,8 @@ internal sealed class AuditLogConfiguration : IEntityTypeConfiguration<AuditLog>
         b.Property(a => a.TargetId).HasMaxLength(64);
         b.Property(a => a.DataJson).HasColumnType("jsonb");
         b.Property(a => a.IpAddress).HasMaxLength(45);
+        b.Property(a => a.Hash).HasMaxLength(64).IsFixedLength();
+        b.HasIndex(a => a.Id).HasFilter("\"Hash\" IS NULL").HasDatabaseName("IX_AuditLogs_Unsealed");
         b.HasIndex(a => a.At);
         b.HasIndex(a => new { a.WorkspaceId, a.At });
         b.HasIndex(a => new { a.ActorUserId, a.At });

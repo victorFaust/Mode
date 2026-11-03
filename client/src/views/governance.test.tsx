@@ -58,6 +58,18 @@ describe("bots", () => {
 });
 
 describe("admin", () => {
+  test("the audit integrity check reports a broken chain", async () => {
+    const user = userEvent.setup();
+    const { api } = renderMode(<AdminView />, { isAdmin: true });
+    api.GET.mockImplementation(((url: string) => reply(url === "/api/v1/admin/audit" ? { items: [], nextBefore: null } : [])) as never);
+    await user.click(screen.getByRole("tab", { name: "Audit log" }));
+    api.POST.mockImplementationOnce(() => reply({ intact: false, checked: 41, brokenAtId: 42, unsealed: 0, lastSealedId: 41 }) as never);
+
+    await user.click(screen.getByRole("button", { name: "Check integrity" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Broken at entry 42");
+    expect(api.POST).toHaveBeenCalledWith("/api/v1/admin/audit/verify");
+  });
   test("only administrators see the admin pages", () => {
     renderMode(<AdminView />, { isAdmin: false });
     expect(screen.getByText("Administrators only")).toBeInTheDocument();

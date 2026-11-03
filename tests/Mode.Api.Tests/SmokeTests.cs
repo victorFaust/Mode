@@ -30,6 +30,7 @@ public sealed class SmokeTests(SmokeTests.Factory factory) : IClassFixture<Smoke
             builder.UseSetting("Auth:PublicKeyPem", Infrastructure.TestAuth.PublicKeyPem);
             builder.UseSetting("Files:StoragePath", Path.Combine(Path.GetTempPath(), "mode-smoke"));
             builder.UseSetting("Files:LinkSigningKey", Infrastructure.ApiFactory.LinkSigningKey);
+            builder.UseSetting("Audit:ChainKey", Infrastructure.ApiFactory.AuditChainKey);
             builder.UseSetting("Jobs:Enabled", "false");
         }
     }

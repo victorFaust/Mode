@@ -27,6 +27,7 @@ Field names are from the request log (`RequestPath`, `StatusCode`, `Elapsed`) an
 | Realtime revocations | `Closed * realtime connections of * deactivated people` | Informational; audit trail of deactivations reaching live sessions. |
 | Host directory | `SqlException` | Any for 5 minutes (sign-ins and names fail). |
 | Retention | audit action `retention.checked` | Missing for 26 hours (the job is not running). |
+| Audit sealing | `Sealing the audit log failed` (Error) | Any for 10 minutes. Keep the `Audit log sealed through entry` lines: they are the outside anchors for the chain. |
 
 ## Container and host
 
@@ -40,7 +41,7 @@ Field names are from the request log (`RequestPath`, `StatusCode`, `Elapsed`) an
 
 ## Security events to review weekly
 
-From the audit log (Admin, Audit log, or `GET /api/v1/admin/audit`): `auth.realtime_revoked`, `hold.*`, `retention.changed`, `dlp.updated`, `webhook.*`, `compliance.export_*`, `audit.exported`, and admin role changes in the host application.
+From the audit log (Admin, Audit log, or `GET /api/v1/admin/audit`): run **Check integrity** and record the result (it must say Intact with no unsealed older entries); then review `auth.realtime_revoked`, `hold.*`, `retention.changed`, `dlp.updated`, `webhook.*`, `compliance.export_*`, `audit.exported`, and admin role changes in the host application.
 
 ## Load test
 

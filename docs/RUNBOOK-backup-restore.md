@@ -6,7 +6,7 @@ What must be backed up together, because they only make sense as a set:
 | --- | --- | --- |
 | PostgreSQL database `mode` | `pgdata` volume | Messages, memberships, file metadata, audit log, holds, settings. |
 | File store | `files` volume (`/data/files`) | File bytes, versions, previews and compliance exports. The database points into it. |
-| `deploy/.env` | server | Signing keys: without `FILES_LINK_SIGNING_KEY` old links fail (harmless, they expire in minutes); without `COMPLIANCE_SIGNING_KEY` existing export manifests can't be verified. |
+| `deploy/.env` | server | Signing keys: without `FILES_LINK_SIGNING_KEY` old links fail (harmless, they expire in minutes); without `COMPLIANCE_SIGNING_KEY` existing export manifests can't be verified; without `AUDIT_CHAIN_KEY` the audit log's integrity can't be checked. Keep a second copy of the keys in the bank's secret store. |
 
 Not backed up by Mode: people and roles (the host application owns them) and ClamAV signatures (re-downloaded).
 
@@ -45,7 +45,7 @@ docker compose -f docker-compose.prod.yml exec postgres psql -U mode -d mode -c 
 curl -fsS https://$MODE_DOMAIN/health/ready
 ```
 
-Then sign in, open a chat with history, and download an older file.
+Then sign in, open a chat with history, download an older file, and run Admin, Audit log, **Check integrity** (it must say Intact).
 
 ## Restore drill (quarterly)
 
