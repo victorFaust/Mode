@@ -11,6 +11,7 @@ Mode has no login screen and stores no credentials. The host application signs u
 | Email | `email` | no | Same as name. |
 | Roles | `roles` | no | String or array. Mapped to Mode roles (below). |
 | Expiry | `exp` | yes | Tokens without `exp` are rejected. |
+| Issued at | `iat` | yes (or `nbf`) | Used to enforce the maximum lifetime. |
 | Issuer | `iss` | yes | Must equal `Auth:Issuer`. |
 | Audience | `aud` | yes | Must equal `Auth:Audience`. |
 | Token id | `jti` | recommended | Used to record one sign-in audit entry per token. |
@@ -24,6 +25,7 @@ The claim names are configurable under `Auth:Claims` (`Subject`, `Name`, `Email`
   - `Auth:MetadataAddress`: the OpenID Connect discovery URL. Keys are read from its `jwks_uri` and refreshed automatically when the host rotates them.
   - `Auth:PublicKeyPem`: a fixed RSA or EC public key.
 - **Claims and lifetime:** issuer, audience, expiry and not-before are always checked. Clock skew is `Auth:ClockSkewSeconds` (default 30).
+- **Maximum lifetime:** tokens issued for longer than `Auth:MaxTokenLifetimeMinutes` (default 60; `0` turns it off) are refused, measured from `iat` (or `nbf`) to `exp`. This limits how long a stolen token can be replayed. Tokens with neither `iat` nor `nbf` are refused while the check is on.
 - **Host directory check:** after the signature is valid, the subject must exist and be active in the host users table. If not, the request gets **401**. Lookups are cached for `UserDirectory:CacheMinutes`, so a deactivation takes effect within that time.
 - **Id normalization:** the subject is normalized through `IUserDirectory` (for example, GUIDs are lowercased). That normalized id is the only identity Mode stores.
 

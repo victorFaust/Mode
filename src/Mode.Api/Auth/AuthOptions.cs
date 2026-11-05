@@ -21,6 +21,10 @@ public sealed class AuthOptions
     [Range(0, 300)]
     public int ClockSkewSeconds { get; set; } = 30;
 
+    /// <summary>Tokens issued for longer than this are refused, limiting replay of a stolen token. 0 turns the check off.</summary>
+    [Range(0, 24 * 60)]
+    public int MaxTokenLifetimeMinutes { get; set; } = 60;
+
     public HostClaimNames Claims { get; set; } = new();
 
     /// <summary>Host role name to Mode role (<see cref="ModeRoles"/>). Unmapped host roles are ignored.</summary>

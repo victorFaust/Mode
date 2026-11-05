@@ -17,7 +17,7 @@ var users = Enumerable.Range(1, options.Users).Select(i => $"0a1b0002-0000-4000-
 var tokens = new string[users.Length];
 await Parallel.ForEachAsync(Enumerable.Range(0, users.Length), new ParallelOptions { MaxDegreeOfParallelism = 20 }, async (i, ct) =>
 {
-    var response = await issuer.PostAsJsonAsync("/token", new { sub = users[i], name = $"Load User {i + 1}", lifetimeMinutes = 240 }, ct);
+    var response = await issuer.PostAsJsonAsync("/token", new { sub = users[i], name = $"Load User {i + 1}", lifetimeMinutes = 60 }, ct);
     response.EnsureSuccessStatusCode();
     tokens[i] = (await response.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("access_token").GetString()!;
 });

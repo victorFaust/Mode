@@ -37,7 +37,7 @@ public sealed class AuthenticationTests(ApiFixture api)
 
     public static TheoryData<string> RejectedTokens => new()
     {
-        "expired", "wrong-issuer", "wrong-audience", "unsigned", "hmac-with-public-key", "foreign-key", "no-expiry",
+        "expired", "wrong-issuer", "wrong-audience", "unsigned", "hmac-with-public-key", "foreign-key", "no-expiry", "too-long-lived",
     };
 
     [Theory]
@@ -57,11 +57,17 @@ public sealed class AuthenticationTests(ApiFixture api)
             "foreign-key" => TestAuth.CreateToken(userId, credentials: new SigningCredentials(
                 new RsaSecurityKey(RSA.Create(2048)), SecurityAlgorithms.RsaSha256)),
             "no-expiry" => TestAuth.CreateToken(userId, withExpiry: false),
+            // Over Auth:MaxTokenLifetimeMinutes (60 by default); limits replay of a stolen token.
+            "too-long-lived" => TestAuth.CreateToken(userId, lifetime: TimeSpan.FromHours(8)),
             _ => throw new ArgumentOutOfRangeException(nameof(kind)),
         };
 
         Assert.Equal(HttpStatusCode.Unauthorized, await MeStatusAsync(token));
     }
+
+    [Fact]
+    public async Task Tokens_up_to_the_maximum_lifetime_are_accepted() =>
+        Assert.Equal(HttpStatusCode.OK, await MeStatusAsync(TestAuth.CreateToken(api.NewUser(), lifetime: TimeSpan.FromMinutes(60))));
 
     [Fact]
     public async Task Unknown_user_is_rejected() =>

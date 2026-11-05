@@ -23,6 +23,15 @@ internal sealed class TokenValidatedHandler(
     {
         var auth = options.Value;
         var principal = context.Principal!;
+        if (auth.MaxTokenLifetimeMinutes > 0 && context.SecurityToken is JsonWebToken jwt)
+        {
+            var issued = jwt.IssuedAt != DateTime.MinValue ? jwt.IssuedAt : jwt.ValidFrom;
+            if (issued == DateTime.MinValue || jwt.ValidTo - issued > TimeSpan.FromMinutes(auth.MaxTokenLifetimeMinutes) + TimeSpan.FromSeconds(auth.ClockSkewSeconds))
+            {
+                context.Fail($"Token lifetime is unknown or longer than {auth.MaxTokenLifetimeMinutes} minutes.");
+                return;
+            }
+        }
         var subject = principal.FindFirst(auth.Claims.Subject)?.Value;
         if (string.IsNullOrWhiteSpace(subject) || subject.Length > UserIds.MaxLength)
         {
