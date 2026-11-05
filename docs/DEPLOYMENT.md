@@ -48,10 +48,11 @@ Settings in `.env`:
 | `POSTGRES_PASSWORD`, `FILES_LINK_SIGNING_KEY`, `PROCESSOR_KEY`, `COMPLIANCE_SIGNING_KEY` | Random secrets. Keep a copy in the bank's secret store; the backup includes them too. |
 | `PUSH_*`, `VAPID_*`, `EMAIL_*`, `SMTP_*` | Optional browser push and email digests. |
 
-Build the client bundle the host application loads:
+Build the embeddable client the host application loads (`mode.js` and `mode.css`, see [HOST-INTEGRATION.md](HOST-INTEGRATION.md)):
 
 ```sh
-cd /opt/mode/client && npm ci && npm run build && rm -rf ../deploy/client-dist && cp -r dist ../deploy/client-dist
+cd /opt/mode/client && npm ci && npx tsc --noEmit && npx vite build --mode lib \
+  && rm -rf ../deploy/client-dist && cp -r dist-lib ../deploy/client-dist
 ```
 
 Build, migrate and start:

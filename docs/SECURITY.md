@@ -55,7 +55,7 @@ Checked and already handled (tests that cover them):
 
 | Area | Result | Evidence |
 | --- | --- | --- |
-| JWT: expired, wrong issuer, wrong audience, unsigned (`alg: none`), HMAC signed with the public key (algorithm confusion), foreign key, no expiry | Rejected | `AuthenticationTests.Invalid_tokens_are_rejected` (7 cases) |
+| JWT: expired, wrong issuer, wrong audience, unsigned (`alg: none`), HMAC signed with the public key (algorithm confusion), foreign key, no expiry, lifetime over 60 minutes | Rejected | `AuthenticationTests.Invalid_tokens_are_rejected` (8 cases) |
 | Token in the query string | Accepted only on the realtime hub path | `AuthenticationTests.Query_string_token_is_accepted_only_on_the_hub_path` |
 | Realtime token expiry | Connection closed at expiry; expired tokens refused | `AuthenticationTests.Realtime_connection_*` |
 | Tokens in logs | Not logged: the request log records the path without the query string, ASP.NET's own request logs are at Warning, and signed-link paths are redacted | `Program.cs` request log options, `appsettings.json`, `SignedLinkRedaction` |
@@ -75,7 +75,7 @@ Checked and already handled (tests that cover them):
 | --- | --- | --- | --- |
 | R1 | A leaked signed download link works for anyone for up to 5 minutes. | Links are opened by the browser directly (no bearer token), so they can't be tied to a person without cookies. | Short lifetime (`Files:DownloadLinkMinutes`), not logged, generated only after an access check. |
 | R2 | A deactivated person can keep a live connection for up to about 6 minutes (directory cache plus one check), and can use REST until the directory cache expires (5 minutes). | Reading the host directory on every request would load the host SQL Server. | Lower `UserDirectory:CacheMinutes` and `Realtime:RecheckSeconds` if needed; the host should also stop issuing tokens immediately. |
-| R3 | Bearer tokens can be replayed until they expire if stolen from a browser. | Inherent to bearer tokens issued by the host. | Short token lifetimes in the host; TLS only; tokens kept in memory by the client, not in storage. |
+| R3 | Bearer tokens can be replayed until they expire if stolen from a browser. | Inherent to bearer tokens issued by the host. | Mode refuses tokens issued for more than `Auth:MaxTokenLifetimeMinutes` (60), so replay lasts at most an hour; the host should issue 15 to 30 minute tokens and keep them in memory ([HOST-INTEGRATION.md](HOST-INTEGRATION.md)). |
 | R4 | A database superuser can still delete or edit audit entries; this is now detected (F8) but not prevented. Entries newer than the last seal (up to about 2 minutes) and deletion of the newest entries are only caught by comparing with the hash anchors in the application log. | Prevention needs storage the server can't write to. | Ship logs off the server; run Check integrity weekly; keep `AUDIT_CHAIN_KEY` outside the server. |
 | R5 | One server: no high availability. Realtime connection state is in memory. | Deliberate for the first release (see DECISIONS). | Nightly backups, 4-hour restore target; scaling out needs a SignalR backplane. |
 | R6 | Closed by F7 (search time limit). | | |
@@ -89,8 +89,8 @@ Checked and already handled (tests that cover them):
 | G2 | Dependency audits clean (.NET, npm, pip). | Done 2026-11-03 |
 | G3 | Every finding F1 to F8 fixed with a passing test. | Done |
 | G4 | Production `.env` filled; secrets generated fresh, stored in the bank's secret store, never reused from development. | To do at deployment |
-| G5 | `AUTH_ISSUER`, `AUTH_AUDIENCE` and signing keys confirmed with the host team; a real host token signs in, a token for another audience is refused. | To do |
-| G6 | Host directory login is read-only (`mode_reader`, SELECT on the users table only) with `Encrypt=True`. | To do |
+| G5 | `AUTH_ISSUER`, `AUTH_AUDIENCE` and signing keys confirmed with the host team; the acceptance tests in [HOST-INTEGRATION.md](HOST-INTEGRATION.md) section 8 pass. | To do (host team) |
+| G6 | Host directory login is read-only (`mode_reader`, SELECT on the users table only) with `Encrypt=True` (HOST-INTEGRATION.md section 5). | To do (host team) |
 | G7 | Firewall allows only 22 (admin networks), 80 and 443. `/internal`, Postgres and ClamAV not reachable from outside (check with `curl` and `nmap` from another machine). | To do |
 | G8 | Backups running nightly and copied off the server; one full restore drill done on a test server. | To do |
 | G9 | Load test with 1,000 people for 10 minutes on a staging server of production size meets the pass criteria in MONITORING.md. | To do |
